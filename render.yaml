@@ -3,10 +3,10 @@ services:
     name: ai-tutor-backend
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    dockerContext: .
     region: oregon
     plan: free
-    branch: main
+    branch: master
     healthCheckPath: /health
     envVars:
       - key: SUPABASE_URL

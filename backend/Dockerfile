@@ -1,15 +1,15 @@
 # Stage 1: Install dependencies
 FROM node:20-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json* ./
+COPY backend/package.json backend/package-lock.json* ./
 RUN npm ci --omit=dev
 
 # Stage 2: Build
 FROM node:20-alpine AS build
 WORKDIR /app
-COPY package.json package-lock.json* ./
+COPY backend/package.json backend/package-lock.json* ./
 RUN npm ci
-COPY . .
+COPY backend/. .
 RUN npm run build
 
 # Stage 3: Production

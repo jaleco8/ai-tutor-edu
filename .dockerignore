@@ -1,0 +1,15 @@
+.git
+.github
+.claude
+.agents
+
+**/node_modules
+**/dist
+**/coverage
+**/.expo
+
+.env
+**/.env
+
+mobile
+supabase
