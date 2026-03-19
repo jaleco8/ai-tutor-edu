@@ -16,7 +16,20 @@ async function bootstrap() {
   app.use(helmet());
 
   app.enableCors({
-    origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+    origin: (origin, callback) => {
+      // Native mobile clients usually send no Origin header; browsers do.
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`CORS blocked for origin: ${origin}`), false);
+    },
     methods: ['GET', 'POST', 'PATCH', 'DELETE'],
     credentials: true,
   });
