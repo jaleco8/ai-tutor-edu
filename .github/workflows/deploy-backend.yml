@@ -1,0 +1,56 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - "backend/**"
+      - "supabase/**"
+      - "render.yaml"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: production-backend-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.67.1
+
+      - name: Validate required secrets
+        run: |
+          : "${SUPABASE_ACCESS_TOKEN:?GitHub secret SUPABASE_ACCESS_TOKEN is required}"
+          : "${SUPABASE_DB_PASSWORD:?GitHub secret SUPABASE_DB_PASSWORD is required}"
+          : "${SUPABASE_PROJECT_REF:?GitHub secret SUPABASE_PROJECT_REF is required}"
+          : "${RENDER_DEPLOY_HOOK_URL:?GitHub secret RENDER_DEPLOY_HOOK_URL is required}"
+
+      - name: Link Supabase project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Preview pending migrations
+        run: supabase db push --linked --dry-run --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Apply migrations
+        run: supabase db push --linked --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Trigger Render deploy for this commit
+        run: curl --fail-with-body --silent --show-error --request POST "${RENDER_DEPLOY_HOOK_URL}?ref=${GITHUB_SHA}"
