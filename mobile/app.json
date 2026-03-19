@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "TutorIA Venezuela",
+    "slug": "ai-tutor-edu",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "org.tutoria.venezuela",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "org.tutoria.venezuela",
+      "predictiveBackGestureEnabled": false
+    },
+    "extra": {
+      "apiUrl": "http://localhost:3000",
+      "eas": {
+        "projectId": "7535ec15-b845-4db7-a866-ebbb562942bf"
+      }
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-sqlite"
+    ],
+    "owner": "jaleco8s-organization"
+  }
+}

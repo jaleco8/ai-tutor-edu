@@ -1,0 +1,287 @@
+-- Seed data for Sprint 1 MVP/P0
+-- HU-30: media_1 curriculum for Matematicas and Ingles
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+INSERT INTO sections (school_code, section_code)
+VALUES ('DEV-001', '1A')
+ON CONFLICT (school_code, section_code) DO NOTHING;
+
+DO $$
+DECLARE
+  math_names TEXT[] := ARRAY[
+    'Conjuntos y pertenencia',
+    'Enteros y valor absoluto',
+    'Fracciones y racionales',
+    'Ecuaciones de primer grado',
+    'Problemas de proporcionalidad'
+  ];
+  math_desc TEXT[] := ARRAY[
+    'Reconoce conjuntos y relaciones de pertenencia con ejemplos cercanos al aula.',
+    'Opera numeros enteros y usa valor absoluto en contextos cotidianos.',
+    'Representa y compara fracciones y numeros racionales.',
+    'Resuelve ecuaciones lineales de una variable paso a paso.',
+    'Aplica razones y proporciones en situaciones del entorno escolar.'
+  ];
+  english_names TEXT[] := ARRAY[
+    'Greetings and introductions',
+    'Classroom objects',
+    'School routines',
+    'Simple present for daily actions',
+    'Directions and locations at school'
+  ];
+  english_desc TEXT[] := ARRAY[
+    'Se presenta y saluda usando expresiones basicas en contexto.',
+    'Nombra y describe objetos frecuentes del aula.',
+    'Habla sobre rutinas escolares con vocabulario funcional.',
+    'Usa simple present para acciones habituales del entorno escolar.',
+    'Comprende y usa referencias de ubicacion y direcciones simples.'
+  ];
+  hint_cycle TEXT[] := ARRAY[
+    'error_frecuente',
+    'concepto_clave',
+    'pregunta_socratica',
+    'ejemplo_contextual',
+    'error_frecuente',
+    'concepto_clave',
+    'pregunta_socratica',
+    'ejemplo_contextual',
+    'concepto_clave',
+    'pregunta_socratica'
+  ];
+  current_area TEXT;
+  current_name TEXT;
+  current_desc TEXT;
+  current_skill UUID;
+  previous_skill UUID;
+  exercise_type TEXT;
+  answer_json JSONB;
+  content_json JSONB;
+  option_list TEXT[];
+  i INT;
+  j INT;
+BEGIN
+  FOR i IN 1..array_length(math_names, 1) LOOP
+    previous_skill := NULLIF(
+      (
+        SELECT id::text
+        FROM skills
+        WHERE area = 'matematicas'
+          AND grade_level = 'media_1'
+          AND sequence_order = i - 1
+        LIMIT 1
+      ),
+      ''
+    )::uuid;
+
+    INSERT INTO skills (area, grade_level, name, description, sequence_order, prerequisite_skill_id)
+    SELECT
+      'matematicas',
+      'media_1',
+      math_names[i],
+      math_desc[i],
+      i,
+      previous_skill
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM skills
+      WHERE area = 'matematicas'
+        AND grade_level = 'media_1'
+        AND name = math_names[i]
+    );
+
+    SELECT id INTO current_skill
+    FROM skills
+    WHERE area = 'matematicas'
+      AND grade_level = 'media_1'
+      AND name = math_names[i]
+    LIMIT 1;
+
+    FOR j IN 1..10 LOOP
+      INSERT INTO skill_hints (skill_id, hint_type, content, sequence_order)
+      SELECT
+        current_skill,
+        hint_cycle[j],
+        format('Pista %s para %s: conecta la idea con una situacion del aula antes de calcular.', j, math_names[i]),
+        j
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM skill_hints
+        WHERE skill_id = current_skill
+          AND sequence_order = j
+      );
+    END LOOP;
+
+    FOR j IN 1..20 LOOP
+      exercise_type := CASE
+        WHEN mod(j, 3) = 0 THEN 'order_steps'
+        WHEN mod(j, 2) = 0 THEN 'numeric'
+        ELSE 'multiple_choice'
+      END;
+
+      IF exercise_type = 'multiple_choice' THEN
+        option_list := ARRAY['A', 'B', 'C', 'D'];
+        answer_json := to_jsonb('B'::text);
+      ELSIF exercise_type = 'numeric' THEN
+        answer_json := to_jsonb((i * 10) + j);
+      ELSE
+        answer_json := to_jsonb(ARRAY['Leer el problema', 'Organizar los datos', 'Resolver', 'Verificar']);
+      END IF;
+
+      content_json := jsonb_build_object(
+        'question',
+        format('Matematicas %s - ejercicio %s sobre %s.', i, j, math_names[i]),
+        'options',
+        CASE
+          WHEN exercise_type = 'multiple_choice'
+            THEN to_jsonb(ARRAY[
+              format('A. Opcion de practica %s', j),
+              format('B. Respuesta correcta guiada para %s', math_names[i]),
+              format('C. Error frecuente %s', j),
+              'D. Distractor contextual'
+            ])
+          WHEN exercise_type = 'order_steps'
+            THEN to_jsonb(ARRAY['Resolver', 'Leer el problema', 'Verificar', 'Organizar los datos'])
+          ELSE '[]'::jsonb
+        END,
+        'feedback_correct',
+        'Correcto. Sigue justificando cada paso.',
+        'feedback_incorrect',
+        'Revisa el dato principal y vuelve al procedimiento.'
+      );
+
+      INSERT INTO exercises (skill_id, type, content, correct_answer, difficulty, is_diagnostic)
+      SELECT
+        current_skill,
+        exercise_type,
+        content_json,
+        answer_json,
+        CASE WHEN j <= 7 THEN 1 WHEN j <= 14 THEN 2 ELSE 3 END,
+        j <= 5
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM exercises
+        WHERE skill_id = current_skill
+          AND content->>'question' = content_json->>'question'
+      );
+    END LOOP;
+  END LOOP;
+
+  FOR i IN 1..array_length(english_names, 1) LOOP
+    previous_skill := NULLIF(
+      (
+        SELECT id::text
+        FROM skills
+        WHERE area = 'ingles'
+          AND grade_level = 'media_1'
+          AND sequence_order = i - 1
+        LIMIT 1
+      ),
+      ''
+    )::uuid;
+
+    INSERT INTO skills (area, grade_level, name, description, sequence_order, prerequisite_skill_id)
+    SELECT
+      'ingles',
+      'media_1',
+      english_names[i],
+      english_desc[i],
+      i,
+      previous_skill
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM skills
+      WHERE area = 'ingles'
+        AND grade_level = 'media_1'
+        AND name = english_names[i]
+    );
+
+    SELECT id INTO current_skill
+    FROM skills
+    WHERE area = 'ingles'
+      AND grade_level = 'media_1'
+      AND name = english_names[i]
+    LIMIT 1;
+
+    FOR j IN 1..10 LOOP
+      INSERT INTO skill_hints (skill_id, hint_type, content, sequence_order)
+      SELECT
+        current_skill,
+        hint_cycle[j],
+        format('Hint %s for %s: ask the learner to explain the idea with a school example.', j, english_names[i]),
+        j
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM skill_hints
+        WHERE skill_id = current_skill
+          AND sequence_order = j
+      );
+    END LOOP;
+
+    FOR j IN 1..20 LOOP
+      exercise_type := CASE
+        WHEN mod(j, 4) = 0 THEN 'translation'
+        WHEN mod(j, 3) = 0 THEN 'dialogue'
+        WHEN mod(j, 2) = 0 THEN 'word_order'
+        ELSE 'multiple_choice'
+      END;
+
+      IF exercise_type = 'multiple_choice' THEN
+        answer_json := to_jsonb('B'::text);
+      ELSIF exercise_type = 'word_order' THEN
+        answer_json := to_jsonb('My classroom is clean'::text);
+      ELSIF exercise_type = 'dialogue' THEN
+        answer_json := to_jsonb('Hello, my name is Ana.'::text);
+      ELSE
+        answer_json := to_jsonb('The library is next to the lab.'::text);
+      END IF;
+
+      content_json := jsonb_build_object(
+        'question',
+        format('English %s - exercise %s about %s.', i, j, english_names[i]),
+        'context',
+        'School setting',
+        'options',
+        CASE
+          WHEN exercise_type = 'multiple_choice'
+            THEN to_jsonb(ARRAY[
+              'A. Distractor',
+              format('B. Functional answer for %s', english_names[i]),
+              'C. Grammar trap',
+              'D. Unrelated option'
+            ])
+          WHEN exercise_type = 'word_order'
+            THEN to_jsonb(ARRAY['clean', 'My', 'is', 'classroom'])
+          WHEN exercise_type = 'dialogue'
+            THEN to_jsonb(ARRAY['Good afternoon', 'I am Ana', 'Nice to meet you'])
+          ELSE '[]'::jsonb
+        END,
+        'feedback_correct',
+        'Correct. Use the sentence in a real classroom context.',
+        'feedback_incorrect',
+        'Check the communicative purpose before answering.'
+      );
+
+      INSERT INTO exercises (skill_id, type, content, correct_answer, difficulty, is_diagnostic)
+      SELECT
+        current_skill,
+        exercise_type,
+        content_json,
+        answer_json,
+        CASE WHEN j <= 7 THEN 1 WHEN j <= 14 THEN 2 ELSE 3 END,
+        j <= 5
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM exercises
+        WHERE skill_id = current_skill
+          AND content->>'question' = content_json->>'question'
+      );
+    END LOOP;
+  END LOOP;
+
+  INSERT INTO content_versions (area, grade_level, version, hash_sha256, bundle_url)
+  VALUES
+    ('matematicas', 'media_1', 1, encode(digest('matematicas-media_1-v1', 'sha256'), 'hex'), NULL),
+    ('ingles', 'media_1', 1, encode(digest('ingles-media_1-v1', 'sha256'), 'hex'), NULL)
+  ON CONFLICT (area, grade_level, version) DO NOTHING;
+END $$;
