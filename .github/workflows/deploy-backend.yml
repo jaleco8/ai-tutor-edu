@@ -60,4 +60,4 @@ jobs:
         run: supabase db push --db-url "$DB_URL"
 
       - name: Trigger Render deploy for this commit
-        run: curl --fail-with-body --silent --show-error --request POST "${RENDER_DEPLOY_HOOK_URL}?ref=${GITHUB_SHA}"
+        run: curl --fail-with-body --silent --show-error --request POST "${RENDER_DEPLOY_HOOK_URL}"
