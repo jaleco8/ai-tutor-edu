@@ -49,13 +49,9 @@ jobs:
 
       - name: Build DB URL
         run: |
-          if [ -n "${SUPABASE_DB_URL:-}" ]; then
-            echo "DB_URL=${SUPABASE_DB_URL}" >> "$GITHUB_ENV"
-          else
-            # Session-mode pooler (port 5432, IPv4, supports DDL migrations)
-            # Username must be postgres.PROJECT_REF for SASL auth via pooler
-            echo "DB_URL=postgresql://postgres.${SUPABASE_PROJECT_REF}:${SUPABASE_DB_PASSWORD}@aws-1-eu-west-1.pooler.supabase.com:5432/postgres" >> "$GITHUB_ENV"
-          fi
+          # Session-mode pooler: IPv4, port 5432, supports DDL migrations
+          # Username must be postgres.PROJECT_REF for SASL auth
+          echo "DB_URL=postgresql://postgres.${SUPABASE_PROJECT_REF}:${SUPABASE_DB_PASSWORD}@aws-1-eu-west-1.pooler.supabase.com:5432/postgres" >> "$GITHUB_ENV"
 
       - name: Preview pending migrations
         run: supabase db push --db-url "$DB_URL" --dry-run
