@@ -7,6 +7,80 @@ INSERT INTO sections (school_code, section_code)
 VALUES ('DEV-001', '1A')
 ON CONFLICT (school_code, section_code) DO NOTHING;
 
+-- ============================================================
+-- Demo users (development only — DO NOT run in production)
+--   estudiante@demo.com / demo1234  →  role: estudiante
+--   docente@demo.com    / demo1234  →  role: docente
+-- ============================================================
+DO $$
+DECLARE
+  v_section_id  UUID;
+  v_student_id  UUID := '00000000-0000-0000-0001-000000000001';
+  v_teacher_id  UUID := '00000000-0000-0000-0001-000000000002';
+BEGIN
+  SELECT id INTO v_section_id
+  FROM sections
+  WHERE school_code = 'DEV-001' AND section_code = '1A';
+
+  -- Demo teacher
+  INSERT INTO auth.users (
+    id, aud, role, email, encrypted_password,
+    email_confirmed_at, created_at, updated_at,
+    raw_app_meta_data, raw_user_meta_data
+  ) VALUES (
+    v_teacher_id, 'authenticated', 'authenticated',
+    'docente@demo.com',
+    crypt('demo1234', gen_salt('bf')),
+    now(), now(), now(),
+    '{"provider":"email","providers":["email"]}',
+    '{}'
+  ) ON CONFLICT (id) DO NOTHING;
+
+  INSERT INTO auth.identities (
+    id, user_id, identity_data, provider, provider_id,
+    last_sign_in_at, created_at, updated_at
+  ) VALUES (
+    '00000000-0000-0000-0002-000000000002',
+    v_teacher_id,
+    jsonb_build_object('sub', v_teacher_id::text, 'email', 'docente@demo.com'),
+    'email', 'docente@demo.com',
+    now(), now(), now()
+  ) ON CONFLICT (provider, provider_id) DO NOTHING;
+
+  INSERT INTO profiles (id, role, school_code, full_name, section_id, is_minor)
+  VALUES (v_teacher_id, 'docente', 'DEV-001', 'Docente Demo', v_section_id, false)
+  ON CONFLICT (id) DO NOTHING;
+
+  -- Demo student
+  INSERT INTO auth.users (
+    id, aud, role, email, encrypted_password,
+    email_confirmed_at, created_at, updated_at,
+    raw_app_meta_data, raw_user_meta_data
+  ) VALUES (
+    v_student_id, 'authenticated', 'authenticated',
+    'estudiante@demo.com',
+    crypt('demo1234', gen_salt('bf')),
+    now(), now(), now(),
+    '{"provider":"email","providers":["email"]}',
+    '{}'
+  ) ON CONFLICT (id) DO NOTHING;
+
+  INSERT INTO auth.identities (
+    id, user_id, identity_data, provider, provider_id,
+    last_sign_in_at, created_at, updated_at
+  ) VALUES (
+    '00000000-0000-0000-0002-000000000001',
+    v_student_id,
+    jsonb_build_object('sub', v_student_id::text, 'email', 'estudiante@demo.com'),
+    'email', 'estudiante@demo.com',
+    now(), now(), now()
+  ) ON CONFLICT (provider, provider_id) DO NOTHING;
+
+  INSERT INTO profiles (id, role, school_code, full_name, section_id, is_minor)
+  VALUES (v_student_id, 'estudiante', 'DEV-001', 'Estudiante Demo', v_section_id, true)
+  ON CONFLICT (id) DO NOTHING;
+END $$;
+
 DO $$
 DECLARE
   math_names TEXT[] := ARRAY[
