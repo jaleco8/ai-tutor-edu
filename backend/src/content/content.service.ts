@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { SupabaseService } from '../common/supabase.service';
 import { ConfigService } from '@nestjs/config';
 import JSZip from 'jszip';
@@ -55,12 +55,15 @@ export class ContentService {
 
   async updateStudentProfile(
     userId: string,
-    accessToken: string,
+    _accessToken: string,
     gradeLevel: string,
     schoolLevel: string,
     selectedAreas: string[],
   ) {
-    const client = this.supabase.getClientForUser(accessToken);
+    // Use service client (admin) — auth is already validated by JwtAuthGuard.
+    // Using the user-scoped client here triggers RLS on upsert which can fail
+    // with ambiguous policy errors depending on Supabase/PostgREST version.
+    const client = this.supabase.getClient();
 
     const { error } = await client.from('student_profiles').upsert({
       user_id: userId,
@@ -69,7 +72,9 @@ export class ContentService {
       selected_areas: selectedAreas,
     }, { onConflict: 'user_id' });
 
-    if (error) throw error;
+    if (error) {
+      throw new InternalServerErrorException(error.message ?? 'Failed to save student profile');
+    }
     return { success: true };
   }
 

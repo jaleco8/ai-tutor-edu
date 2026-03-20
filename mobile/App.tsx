@@ -1,7 +1,18 @@
 import { StatusBar } from 'expo-status-bar';
 import NetInfo from '@react-native-community/netinfo';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, SafeAreaView, ScrollView, StatusBar as RNStatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StatusBar as RNStatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import {
   chatWithTutor,
   createAssignment,
@@ -38,8 +49,21 @@ import {
   upsertChatTurn,
 } from './src/db/database';
 import { appendChatTurn, buildExitTicket, buildRecommendation, evaluateLocalExercise } from './src/utils/learning';
-import { AssignmentSummary, AuthSession, ChatTurn, ExitTicket, LocalExercise, LocalMastery, LocalSkill, TeacherSummaryRow, TutorMode, UserRole } from './src/types';
+import {
+  AssignmentSummary,
+  AuthSession,
+  ChatTurn,
+  ExitTicket,
+  LocalExercise,
+  LocalMastery,
+  LocalSkill,
+  TeacherSummaryRow,
+  TutorMode,
+  UserRole,
+} from './src/types';
 import { API_URL } from './src/config';
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 type Screen =
   | 'loading'
@@ -63,6 +87,8 @@ type AuthFormState = {
   sectionCode: string;
 };
 
+// ─── Static data ─────────────────────────────────────────────────────────────
+
 const initialAuthForm: AuthFormState = {
   mode: 'login',
   role: 'estudiante',
@@ -74,19 +100,58 @@ const initialAuthForm: AuthFormState = {
 };
 
 const schoolLevels = [
-  { value: 'primaria', label: 'Educacion Primaria' },
-  { value: 'media', label: 'Educacion Media' },
+  { value: 'primaria', label: 'Educación Primaria' },
+  { value: 'media', label: 'Educación Media' },
 ];
 
-const gradeOptions = [
-  'media_1',
-  'media_2',
-  'media_3',
-  'media_4',
-  'media_5',
+const gradeData: Record<string, Array<{ value: string; label: string }>> = {
+  primaria: [
+    { value: 'primaria_1', label: '1er Grado' },
+    { value: 'primaria_2', label: '2do Grado' },
+    { value: 'primaria_3', label: '3er Grado' },
+    { value: 'primaria_4', label: '4to Grado' },
+    { value: 'primaria_5', label: '5to Grado' },
+    { value: 'primaria_6', label: '6to Grado' },
+  ],
+  media: [
+    { value: 'media_1', label: '1er Año' },
+    { value: 'media_2', label: '2do Año' },
+    { value: 'media_3', label: '3er Año' },
+    { value: 'media_4', label: '4to Año' },
+    { value: 'media_5', label: '5to Año' },
+  ],
+};
+
+const areaData = [
+  { value: 'matematicas', label: 'Matemáticas', icon: '📐' },
+  { value: 'ingles', label: 'Inglés', icon: '💬' },
+  { value: 'programacion', label: 'Programación', icon: '💻' },
 ];
 
-const areaOptions = ['matematicas', 'ingles', 'programacion'];
+function gradeLabel(value: string): string {
+  for (const grades of Object.values(gradeData)) {
+    const found = grades.find((g) => g.value === value);
+    if (found) return found.label;
+  }
+  return value;
+}
+
+function areaLabel(value: string): string {
+  return areaData.find((a) => a.value === value)?.label ?? value;
+}
+
+function areaIcon(value: string): string {
+  return areaData.find((a) => a.value === value)?.icon ?? '📚';
+}
+
+const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
+  bloqueada: { label: 'Bloqueada', color: '#9ca3af', bg: '#f3f4f6' },
+  disponible: { label: 'Disponible', color: '#3b82f6', bg: '#eff6ff' },
+  en_proceso: { label: 'En proceso', color: '#f59e0b', bg: '#fffbeb' },
+  dominada: { label: 'Dominada', color: '#10b981', bg: '#ecfdf5' },
+};
+
+// ─── App component ────────────────────────────────────────────────────────────
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('loading');
@@ -116,18 +181,17 @@ export default function App() {
   const [teacherAssignments, setTeacherAssignments] = useState<AssignmentSummary[]>([]);
   const [assignmentDraft, setAssignmentDraft] = useState({
     skillId: '',
-    deadline: new Date(Date.now() + (3 * 24 * 60 * 60 * 1000)).toISOString(),
+    deadline: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
   });
 
-  // --- DEBUG: connection test (temporal) ---
+  // --- DEBUG: connection test ---
   const [debugLog, setDebugLog] = useState<Array<{ label: string; status: 'pending' | 'ok' | 'error'; detail: string }>>([]);
   const [debugEmail, setDebugEmail] = useState('');
   const [debugPassword, setDebugPassword] = useState('');
-  // -----------------------------------------
 
   const recommendation = useMemo(() => buildRecommendation(skills, mastery), [skills, mastery]);
   const activeSkill = useMemo(
-    () => skills.find((skill) => skill.id === (selectedSkillId ?? recommendation?.skillId ?? null)) ?? null,
+    () => skills.find((s) => s.id === (selectedSkillId ?? recommendation?.skillId ?? null)) ?? null,
     [recommendation?.skillId, selectedSkillId, skills],
   );
 
@@ -135,21 +199,13 @@ export default function App() {
     const subscription = NetInfo.addEventListener((state) => {
       setIsConnected(Boolean(state.isConnected));
     });
-
-    NetInfo.fetch().then((state) => {
-      setIsConnected(Boolean(state.isConnected));
-    });
-
+    NetInfo.fetch().then((state) => setIsConnected(Boolean(state.isConnected)));
     void bootstrap();
-
     return () => subscription();
   }, []);
 
   useEffect(() => {
-    if (!session) {
-      return;
-    }
-
+    if (!session) return;
     void hydrateLocalState(session.profile.selectedAreas);
 
     if (session.profile.role === 'docente') {
@@ -215,26 +271,23 @@ export default function App() {
     setErrorMessage(null);
 
     try {
-      const nextSession = authForm.mode === 'register'
-        ? await register({
-          email: authForm.email,
-          password: authForm.password,
-          role: authForm.role,
-          schoolCode: authForm.schoolCode,
-          sectionCode: authForm.sectionCode,
-          fullName: authForm.fullName || undefined,
-        })
-        : await login({
-          email: authForm.email,
-          password: authForm.password,
-        });
+      const nextSession =
+        authForm.mode === 'register'
+          ? await register({
+              email: authForm.email,
+              password: authForm.password,
+              role: authForm.role,
+              schoolCode: authForm.schoolCode,
+              sectionCode: authForm.sectionCode,
+              fullName: authForm.fullName || undefined,
+            })
+          : await login({ email: authForm.email, password: authForm.password });
 
       let profile = nextSession.profile;
       try {
         profile = await fetchProfile(nextSession.accessToken);
       } catch {
-        // /auth/me puede fallar si el perfil aún no es visible vía RLS;
-        // usamos los datos que retornó el login/register como fallback.
+        // fallback to data from login/register
       }
       const mergedSession = { ...nextSession, profile };
       await saveSession(mergedSession);
@@ -259,17 +312,14 @@ export default function App() {
   }
 
   async function handleOnboardingSubmit(runDiagnosticAfterSave: boolean) {
-    if (!session) {
-      return;
-    }
-
+    if (!session) return;
     setIsBusy(true);
     setErrorMessage(null);
 
     try {
       await updateProfile(session.accessToken, onboarding);
 
-      for (const area of onboarding.selectedAreas.filter((value) => value !== 'programacion')) {
+      for (const area of onboarding.selectedAreas.filter((v) => v !== 'programacion')) {
         const manifest = await fetchBundleManifest(session.accessToken, area, onboarding.gradeLevel);
         const bundle = await downloadBundle(manifest);
         await saveBundle(bundle, manifest.version, manifest.hashSha256);
@@ -305,10 +355,7 @@ export default function App() {
   }
 
   async function handleDiagnosticSubmit() {
-    if (!session) {
-      return;
-    }
-
+    if (!session) return;
     setIsBusy(true);
     setErrorMessage(null);
 
@@ -341,17 +388,14 @@ export default function App() {
       await hydrateLocalState(session.profile.selectedAreas);
       setScreen('student-home');
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'No se pudo registrar el diagnostico');
+      setErrorMessage(error instanceof Error ? error.message : 'No se pudo registrar el diagnóstico');
     } finally {
       setIsBusy(false);
     }
   }
 
   async function loadStudentAssignments(currentSession: AuthSession) {
-    if (!isConnected) {
-      return;
-    }
-
+    if (!isConnected) return;
     try {
       const assignments = await fetchStudentAssignments(currentSession.accessToken);
       setStudentAssignments(assignments);
@@ -361,10 +405,7 @@ export default function App() {
   }
 
   async function loadTeacherData(currentSession: AuthSession) {
-    if (!isConnected) {
-      return;
-    }
-
+    if (!isConnected) return;
     try {
       const [summary, assignments] = await Promise.all([
         fetchTeacherSummary(currentSession.accessToken),
@@ -373,7 +414,7 @@ export default function App() {
       setTeacherSummary(summary);
       setTeacherAssignments(assignments);
       if (!assignmentDraft.skillId && summary[0]?.skill_id) {
-        setAssignmentDraft((current) => ({ ...current, skillId: summary[0].skill_id }));
+        setAssignmentDraft((c) => ({ ...c, skillId: summary[0].skill_id }));
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'No se pudo cargar el panel docente');
@@ -391,23 +432,19 @@ export default function App() {
   }
 
   async function handlePracticeSubmit(exercise: LocalExercise) {
-    if (!activeSkill || !session) {
-      return;
-    }
-
+    if (!activeSkill || !session) return;
     const answer = practiceAnswers[exercise.id] ?? '';
-    if (!answer.trim()) {
-      return;
-    }
+    if (!answer.trim()) return;
 
     const startedAt = Date.now();
     const mode: TutorMode = isConnected ? 'online' : 'offline';
-    const result = (isConnected && exercise.type === 'translation')
-      ? await evaluateExercise(session.accessToken, { exerciseId: exercise.id, answer, mode })
-      : evaluateLocalExercise(exercise, answer);
+    const result =
+      isConnected && exercise.type === 'translation'
+        ? await evaluateExercise(session.accessToken, { exerciseId: exercise.id, answer, mode })
+        : evaluateLocalExercise(exercise, answer);
 
     const timeSpentSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
-    setPracticeFeedback((current) => ({ ...current, [exercise.id]: result.feedback }));
+    setPracticeFeedback((c) => ({ ...c, [exercise.id]: result.feedback }));
 
     await recordAttempt({
       id: cryptoId(),
@@ -424,16 +461,20 @@ export default function App() {
     const updatedMastery = await getMastery();
     setMastery(updatedMastery);
 
-    const currentSkillMastery = updatedMastery.find((entry) => entry.skillId === exercise.skill_id);
-    await queueSyncEvent(cryptoId(), result.status === 'pending_review' ? 'translation_review' : 'practice_summary', {
-      skillId: exercise.skill_id,
-      totalAttempts: currentSkillMastery?.attemptsCount ?? 0,
-      correctCount: Math.round(((currentSkillMastery?.accuracyRate ?? 0) / 100) * (currentSkillMastery?.attemptsCount ?? 0)),
-      totalTimeSeconds: timeSpentSeconds,
-      periodStart: new Date().toISOString().slice(0, 10),
-      periodEnd: new Date().toISOString().slice(0, 10),
-      lastPracticedAt: new Date().toISOString(),
-    });
+    const currentSkillMastery = updatedMastery.find((e) => e.skillId === exercise.skill_id);
+    await queueSyncEvent(
+      cryptoId(),
+      result.status === 'pending_review' ? 'translation_review' : 'practice_summary',
+      {
+        skillId: exercise.skill_id,
+        totalAttempts: currentSkillMastery?.attemptsCount ?? 0,
+        correctCount: Math.round(((currentSkillMastery?.accuracyRate ?? 0) / 100) * (currentSkillMastery?.attemptsCount ?? 0)),
+        totalTimeSeconds: timeSpentSeconds,
+        periodStart: new Date().toISOString().slice(0, 10),
+        periodEnd: new Date().toISOString().slice(0, 10),
+        lastPracticedAt: new Date().toISOString(),
+      },
+    );
 
     await queueSyncEvent(cryptoId(), 'mastery_update', {
       skillId: exercise.skill_id,
@@ -445,19 +486,13 @@ export default function App() {
 
     const recentAttempts = await getRecentAttempts(exercise.skill_id, 10);
     if (recentAttempts.length >= 10) {
-      const ticket = buildExitTicket(
-        exercise.skill_id,
-        recentAttempts,
-        buildRecommendation(skills, updatedMastery),
-      );
+      const ticket = buildExitTicket(exercise.skill_id, recentAttempts, buildRecommendation(skills, updatedMastery));
       setExitTicket(ticket);
     }
   }
 
   async function sendTutorMessage() {
-    if (!activeSkill || !session || !chatInput.trim()) {
-      return;
-    }
+    if (!activeSkill || !session || !chatInput.trim()) return;
 
     const mode: TutorMode = isConnected ? 'online' : 'offline';
     const userTurn: ChatTurn = {
@@ -494,7 +529,7 @@ export default function App() {
     };
 
     await upsertChatTurn(activeSkill.id, assistantTurn);
-    setChatTurns((current) => appendChatTurn(current, assistantTurn));
+    setChatTurns((c) => appendChatTurn(c, assistantTurn));
     setChatInput('');
   }
 
@@ -505,10 +540,7 @@ export default function App() {
   }
 
   async function handleCreateAssignment() {
-    if (!session || !assignmentDraft.skillId) {
-      return;
-    }
-
+    if (!session || !assignmentDraft.skillId) return;
     setIsBusy(true);
     setErrorMessage(null);
 
@@ -520,32 +552,23 @@ export default function App() {
       });
       await loadTeacherData(session);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'No se pudo crear la asignacion');
+      setErrorMessage(error instanceof Error ? error.message : 'No se pudo crear la asignación');
     } finally {
       setIsBusy(false);
     }
   }
 
   async function syncPending(currentSession: AuthSession) {
-    if (!isConnected) {
-      return;
-    }
-
+    if (!isConnected) return;
     const pending = await getPendingSyncEvents();
-    if (pending.length === 0) {
-      return;
-    }
+    if (pending.length === 0) return;
 
     try {
       await syncEvents(
         currentSession.accessToken,
-        pending.map((event) => ({
-          id: event.id,
-          eventType: event.eventType,
-          payload: event.payload,
-        })),
+        pending.map((e) => ({ id: e.id, eventType: e.eventType, payload: e.payload })),
       );
-      await markSyncEventsSynced(pending.map((event) => event.id));
+      await markSyncEventsSynced(pending.map((e) => e.id));
     } catch {
       for (const event of pending) {
         await scheduleRetry(event.id, event.retryCount + 1);
@@ -553,43 +576,36 @@ export default function App() {
     }
   }
 
-  // --- DEBUG: pantalla temporal para verificar conectividad con el backend ---
+  // ─── Screens ───────────────────────────────────────────────────────────────
+
   function renderConnectionTest() {
     async function runCheck(label: string, fn: () => Promise<string>) {
       setDebugLog((prev) => [...prev, { label, status: 'pending', detail: '...' }]);
       try {
         const detail = await fn();
-        setDebugLog((prev) =>
-          prev.map((entry) => entry.label === label ? { label, status: 'ok', detail } : entry),
-        );
+        setDebugLog((prev) => prev.map((e) => (e.label === label ? { label, status: 'ok', detail } : e)));
       } catch (err) {
         setDebugLog((prev) =>
-          prev.map((entry) => entry.label === label ? { label, status: 'error', detail: err instanceof Error ? err.message : String(err) } : entry),
+          prev.map((e) => (e.label === label ? { label, status: 'error', detail: err instanceof Error ? err.message : String(err) } : e)),
         );
       }
     }
 
-    function clearLog() {
-      setDebugLog([]);
-    }
-
     return (
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Prueba de conexion</Text>
-        <Text style={[styles.helperText, { fontFamily: 'monospace' }]}>URL: {API_URL}</Text>
+        <Text style={styles.cardTitle}>Prueba de conexión</Text>
+        <Text style={[styles.caption, { fontFamily: 'monospace' }]}>URL: {API_URL}</Text>
 
-        <Pressable style={styles.primaryButton} onPress={() => void runCheck('GET /health', async () => {
+        <Btn label="Ping /health" onPress={() => void runCheck('GET /health', async () => {
           const res = await fetch(`${API_URL}/health`);
           const json = await res.json() as Record<string, unknown>;
           return `${res.status} — ${JSON.stringify(json)}`;
-        })}>
-          <Text style={styles.primaryButtonText}>Ping /health</Text>
-        </Pressable>
+        })} />
 
-        <Text style={styles.subsectionTitle}>Login de prueba</Text>
+        <Text style={styles.sectionLabel}>Login de prueba</Text>
         <Field label="Email" value={debugEmail} onChangeText={setDebugEmail} />
-        <Field label="Password" secureTextEntry value={debugPassword} onChangeText={setDebugPassword} />
-        <Pressable style={styles.primaryButton} onPress={() => void runCheck('POST /auth/login', async () => {
+        <Field label="Contraseña" secureTextEntry value={debugPassword} onChangeText={setDebugPassword} />
+        <Btn label="Probar login" onPress={() => void runCheck('POST /auth/login', async () => {
           const res = await fetch(`${API_URL}/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -597,41 +613,38 @@ export default function App() {
           });
           const text = await res.text();
           return `${res.status} — ${text.slice(0, 200)}`;
-        })}>
-          <Text style={styles.primaryButtonText}>Probar login</Text>
-        </Pressable>
+        })} />
 
-        <Pressable style={styles.secondaryButton} onPress={clearLog}>
-          <Text style={styles.secondaryButtonText}>Limpiar log</Text>
-        </Pressable>
+        <Btn label="Limpiar log" variant="outline" onPress={() => setDebugLog([])} />
 
         {debugLog.map((entry, i) => (
-          <View key={i} style={{ padding: 8, backgroundColor: entry.status === 'ok' ? '#d4edda' : entry.status === 'error' ? '#f8d7da' : '#fff3cd', borderRadius: 8 }}>
-            <Text style={{ fontWeight: '700', color: '#17324d' }}>{entry.label}</Text>
-            <Text style={{ color: '#2f3f4d', fontSize: 12 }}>{entry.detail}</Text>
+          <View
+            key={i}
+            style={[styles.debugRow, { backgroundColor: entry.status === 'ok' ? '#d1fae5' : entry.status === 'error' ? '#fee2e2' : '#fef3c7' }]}
+          >
+            <Text style={styles.debugLabel}>{entry.label}</Text>
+            <Text style={styles.debugDetail}>{entry.detail}</Text>
           </View>
         ))}
 
-        <Pressable style={styles.secondaryButtonWide} onPress={() => setScreen('auth')}>
-          <Text style={styles.secondaryButtonText}>Volver al login</Text>
-        </Pressable>
+        <Btn label="Volver al login" variant="outline" onPress={() => setScreen('auth')} />
       </View>
     );
   }
-  // ---------------------------------------------------------------------------
 
   function renderHeader() {
+    const connDot = isConnected ? '🟢' : '🔴';
     return (
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>TutorIA Venezuela</Text>
-          <Text style={styles.headerSubtitle}>
-            {isConnected ? 'Online' : 'Offline'} · {session?.profile.sectionCode ?? 'sin seccion'}
+          <Text style={styles.headerSub}>
+            {connDot} {isConnected ? 'En línea' : 'Sin conexión'} · {session?.profile.sectionCode ?? '—'}
           </Text>
         </View>
         {session ? (
-          <Pressable style={styles.secondaryButton} onPress={handleLogout}>
-            <Text style={styles.secondaryButtonText}>Salir</Text>
+          <Pressable style={styles.logoutBtn} onPress={handleLogout}>
+            <Text style={styles.logoutText}>Salir</Text>
           </Pressable>
         ) : null}
       </View>
@@ -639,54 +652,85 @@ export default function App() {
   }
 
   function renderAuth() {
+    const isLogin = authForm.mode === 'login';
     return (
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>
-          {authForm.mode === 'login' ? 'Entrar al MVP' : 'Crear cuenta'}
-        </Text>
-        <View style={styles.row}>
-          <ToggleButton
-            label="Login"
-            active={authForm.mode === 'login'}
-            onPress={() => setAuthForm((current) => ({ ...current, mode: 'login' }))}
-          />
-          <ToggleButton
-            label="Registro"
-            active={authForm.mode === 'register'}
-            onPress={() => setAuthForm((current) => ({ ...current, mode: 'register' }))}
-          />
+        {/* App logo area */}
+        <View style={styles.logoBlock}>
+          <Text style={styles.logoEmoji}>🎓</Text>
+          <Text style={styles.logoTitle}>TutorIA Venezuela</Text>
+          <Text style={styles.logoSub}>Aprende sin límites</Text>
         </View>
-        {authForm.mode === 'register' ? (
-          <View style={styles.row}>
-            <ToggleButton
+
+        {/* Mode tabs */}
+        <View style={styles.tabRow}>
+          <Pressable
+            style={[styles.tab, isLogin && styles.tabActive]}
+            onPress={() => setAuthForm((c) => ({ ...c, mode: 'login' }))}
+          >
+            <Text style={[styles.tabText, isLogin && styles.tabTextActive]}>Ingresar</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.tab, !isLogin && styles.tabActive]}
+            onPress={() => setAuthForm((c) => ({ ...c, mode: 'register' }))}
+          >
+            <Text style={[styles.tabText, !isLogin && styles.tabTextActive]}>Registrarse</Text>
+          </Pressable>
+        </View>
+
+        {!isLogin && (
+          <View style={styles.segmentRow}>
+            <SegmentBtn
               label="Estudiante"
               active={authForm.role === 'estudiante'}
-              onPress={() => setAuthForm((current) => ({ ...current, role: 'estudiante' }))}
+              onPress={() => setAuthForm((c) => ({ ...c, role: 'estudiante' }))}
             />
-            <ToggleButton
+            <SegmentBtn
               label="Docente"
               active={authForm.role === 'docente'}
-              onPress={() => setAuthForm((current) => ({ ...current, role: 'docente' }))}
+              onPress={() => setAuthForm((c) => ({ ...c, role: 'docente' }))}
             />
           </View>
-        ) : null}
-        <Field label="Correo" value={authForm.email} onChangeText={(email) => setAuthForm((current) => ({ ...current, email }))} />
-        <Field label="Contraseña" secureTextEntry value={authForm.password} onChangeText={(password) => setAuthForm((current) => ({ ...current, password }))} />
-        {authForm.mode === 'register' ? (
+        )}
+
+        <Field
+          label="Correo electrónico"
+          value={authForm.email}
+          onChangeText={(email) => setAuthForm((c) => ({ ...c, email }))}
+          autoComplete="email"
+        />
+        <Field
+          label="Contraseña"
+          secureTextEntry
+          value={authForm.password}
+          onChangeText={(password) => setAuthForm((c) => ({ ...c, password }))}
+        />
+
+        {!isLogin && (
           <>
-            <Field label="Nombre completo (opcional estudiante)" value={authForm.fullName} onChangeText={(fullName) => setAuthForm((current) => ({ ...current, fullName }))} />
-            <Field label="Codigo de escuela" value={authForm.schoolCode} onChangeText={(schoolCode) => setAuthForm((current) => ({ ...current, schoolCode }))} />
-            <Field label="Codigo de seccion" value={authForm.sectionCode} onChangeText={(sectionCode) => setAuthForm((current) => ({ ...current, sectionCode }))} />
+            <Field
+              label="Nombre completo (opcional para estudiantes)"
+              value={authForm.fullName}
+              onChangeText={(fullName) => setAuthForm((c) => ({ ...c, fullName }))}
+            />
+            <Field
+              label="Código de escuela"
+              value={authForm.schoolCode}
+              onChangeText={(schoolCode) => setAuthForm((c) => ({ ...c, schoolCode }))}
+            />
+            <Field
+              label="Código de sección"
+              value={authForm.sectionCode}
+              onChangeText={(sectionCode) => setAuthForm((c) => ({ ...c, sectionCode }))}
+            />
           </>
-        ) : null}
-        <Pressable style={styles.primaryButton} onPress={handleAuthSubmit}>
-          <Text style={styles.primaryButtonText}>
-            {authForm.mode === 'login' ? 'Entrar' : 'Registrar'}
-          </Text>
-        </Pressable>
+        )}
+
+        <Btn label={isLogin ? 'Ingresar' : 'Crear cuenta'} onPress={handleAuthSubmit} />
+
         <Pressable onPress={() => setScreen('connection-test')}>
-          <Text style={[styles.helperText, { textAlign: 'center', textDecorationLine: 'underline' }]}>
-            Probar conexion con el backend
+          <Text style={[styles.caption, { textAlign: 'center', textDecorationLine: 'underline', marginTop: 4 }]}>
+            Verificar conexión con el backend
           </Text>
         </Pressable>
       </View>
@@ -694,193 +738,366 @@ export default function App() {
   }
 
   function renderOnboarding() {
+    const currentGrades = gradeData[onboarding.schoolLevel] ?? gradeData.media;
+
     return (
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Onboarding curricular</Text>
-        <Text style={styles.helperText}>1. Nivel escolar</Text>
-        <View style={styles.row}>
-          {schoolLevels.map((level) => (
-            <ToggleButton
-              key={level.value}
-              label={level.label}
-              active={onboarding.schoolLevel === level.value}
-              onPress={() => setOnboarding((current) => ({ ...current, schoolLevel: level.value }))}
-            />
-          ))}
+        {/* Header */}
+        <View style={styles.onboardingHeader}>
+          <Text style={styles.logoEmoji}>📚</Text>
+          <Text style={styles.cardTitle}>Configura tu perfil</Text>
+          <Text style={styles.caption}>Cuéntanos un poco sobre ti para personalizar tu experiencia</Text>
         </View>
 
-        <Text style={styles.helperText}>2. Grado / año</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
-          {gradeOptions.map((gradeLevel) => (
-            <ToggleButton
-              key={gradeLevel}
-              label={gradeLevel}
-              active={onboarding.gradeLevel === gradeLevel}
-              onPress={() => setOnboarding((current) => ({ ...current, gradeLevel }))}
-            />
-          ))}
-        </ScrollView>
-
-        <Text style={styles.helperText}>3. Areas</Text>
-        <View style={styles.rowWrap}>
-          {areaOptions.map((area) => {
-            const isActive = onboarding.selectedAreas.includes(area);
-            return (
-              <ToggleButton
-                key={area}
-                label={area}
-                active={isActive}
-                onPress={() => setOnboarding((current) => ({
-                  ...current,
-                  selectedAreas: isActive
-                    ? current.selectedAreas.filter((value) => value !== area)
-                    : [...current.selectedAreas, area],
-                }))}
+        {/* Step 1 */}
+        <View style={styles.stepBlock}>
+          <View style={styles.stepBadgeRow}>
+            <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>1</Text></View>
+            <Text style={styles.stepTitle}>Nivel escolar</Text>
+          </View>
+          <View style={styles.pillRow}>
+            {schoolLevels.map((level) => (
+              <Pill
+                key={level.value}
+                label={level.label}
+                active={onboarding.schoolLevel === level.value}
+                onPress={() => {
+                  const firstGrade = (gradeData[level.value] ?? gradeData.media)[0].value;
+                  setOnboarding((c) => ({ ...c, schoolLevel: level.value, gradeLevel: firstGrade }));
+                }}
               />
-            );
-          })}
+            ))}
+          </View>
         </View>
 
-        <Pressable style={styles.primaryButton} onPress={() => handleOnboardingSubmit(true)}>
-          <Text style={styles.primaryButtonText}>Guardar y diagnosticar</Text>
-        </Pressable>
-        <Pressable style={styles.secondaryButtonWide} onPress={() => handleOnboardingSubmit(false)}>
-          <Text style={styles.secondaryButtonText}>Guardar y saltar diagnostico</Text>
-        </Pressable>
+        {/* Step 2 */}
+        <View style={styles.stepBlock}>
+          <View style={styles.stepBadgeRow}>
+            <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>2</Text></View>
+            <Text style={styles.stepTitle}>
+              {onboarding.schoolLevel === 'primaria' ? 'Grado' : 'Año'}
+            </Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.pillRowScroll}>
+              {currentGrades.map((grade) => (
+                <Pill
+                  key={grade.value}
+                  label={grade.label}
+                  active={onboarding.gradeLevel === grade.value}
+                  onPress={() => setOnboarding((c) => ({ ...c, gradeLevel: grade.value }))}
+                />
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+
+        {/* Step 3 */}
+        <View style={styles.stepBlock}>
+          <View style={styles.stepBadgeRow}>
+            <View style={styles.stepBadge}><Text style={styles.stepBadgeText}>3</Text></View>
+            <Text style={styles.stepTitle}>Áreas de estudio</Text>
+          </View>
+          <Text style={styles.caption}>Selecciona una o más áreas</Text>
+          <View style={styles.areaGrid}>
+            {areaData.map((area) => {
+              const isActive = onboarding.selectedAreas.includes(area.value);
+              return (
+                <Pressable
+                  key={area.value}
+                  style={[styles.areaCard, isActive && styles.areaCardActive]}
+                  onPress={() =>
+                    setOnboarding((c) => ({
+                      ...c,
+                      selectedAreas: isActive
+                        ? c.selectedAreas.filter((v) => v !== area.value)
+                        : [...c.selectedAreas, area.value],
+                    }))
+                  }
+                >
+                  <Text style={styles.areaIcon}>{area.icon}</Text>
+                  <Text style={[styles.areaLabel, isActive && styles.areaLabelActive]}>{area.label}</Text>
+                  {isActive && <View style={styles.areaCheck}><Text style={styles.areaCheckText}>✓</Text></View>}
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Actions */}
+        <Btn label="Guardar y hacer diagnóstico" onPress={() => handleOnboardingSubmit(true)} />
+        <Btn label="Guardar y comenzar directo" variant="outline" onPress={() => handleOnboardingSubmit(false)} />
       </View>
     );
   }
 
   function renderDiagnostic() {
+    const answered = Object.keys(diagnosticAnswers).length;
+    const total = diagnosticExercises.length;
+    const pct = total > 0 ? Math.round((answered / total) * 100) : 0;
+
     return (
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Diagnostico inicial</Text>
-        <Text style={styles.helperText}>Marca si cada enunciado te resulta resoluble ahora.</Text>
-        {diagnosticExercises.map((exercise) => (
-          <View key={exercise.id} style={styles.exerciseCard}>
-            <Text style={styles.exerciseTitle}>{exercise.content.question ?? 'Pregunta diagnostica'}</Text>
-            <View style={styles.row}>
-              <ToggleButton
-                label="Lo manejo"
-                active={diagnosticAnswers[exercise.id] === true}
-                onPress={() => setDiagnosticAnswers((current) => ({ ...current, [exercise.id]: true }))}
-              />
-              <ToggleButton
-                label="Necesito apoyo"
-                active={diagnosticAnswers[exercise.id] === false}
-                onPress={() => setDiagnosticAnswers((current) => ({ ...current, [exercise.id]: false }))}
-              />
+        <Text style={styles.cardTitle}>Diagnóstico inicial</Text>
+        <Text style={styles.caption}>
+          Indica si puedes resolver cada enunciado. Sé honesto — esto nos ayuda a empezar en el lugar correcto.
+        </Text>
+
+        {/* Progress bar */}
+        <View style={styles.progressBar}>
+          <View style={[styles.progressFill, { width: `${pct}%` as any }]} />
+        </View>
+        <Text style={styles.caption}>{answered} de {total} respondidas</Text>
+
+        {diagnosticExercises.map((exercise, idx) => (
+          <View key={exercise.id} style={styles.diagCard}>
+            <Text style={styles.diagNum}>Ejercicio {idx + 1}</Text>
+            <Text style={styles.diagQuestion}>{exercise.content.question ?? 'Pregunta diagnóstica'}</Text>
+            <View style={styles.diagBtnRow}>
+              <Pressable
+                style={[styles.diagBtn, diagnosticAnswers[exercise.id] === true && styles.diagBtnYes]}
+                onPress={() => setDiagnosticAnswers((c) => ({ ...c, [exercise.id]: true }))}
+              >
+                <Text style={[styles.diagBtnText, diagnosticAnswers[exercise.id] === true && { color: '#fff' }]}>
+                  ✓ Lo manejo
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.diagBtn, diagnosticAnswers[exercise.id] === false && styles.diagBtnNo]}
+                onPress={() => setDiagnosticAnswers((c) => ({ ...c, [exercise.id]: false }))}
+              >
+                <Text style={[styles.diagBtnText, diagnosticAnswers[exercise.id] === false && { color: '#fff' }]}>
+                  × Necesito apoyo
+                </Text>
+              </Pressable>
             </View>
           </View>
         ))}
-        <Pressable style={styles.primaryButton} onPress={handleDiagnosticSubmit}>
-          <Text style={styles.primaryButtonText}>Guardar diagnostico</Text>
-        </Pressable>
+
+        <Btn label="Guardar diagnóstico" onPress={handleDiagnosticSubmit} />
       </View>
     );
   }
 
   function renderStudentHome() {
+    const grade = gradeLabel(session?.profile.gradeLevel ?? '');
+    const areas = (session?.profile.selectedAreas ?? []).map(areaLabel).join(', ');
+
     return (
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Inicio del estudiante</Text>
-        <Text style={styles.helperText}>
-          Recomendacion: {recommendation ? `${recommendation.skillName} (${recommendation.status})` : 'cargar contenido'}
-        </Text>
-        <View style={styles.rowWrap}>
-          <Pressable style={styles.primaryButtonCompact} onPress={() => recommendation?.skillId && void openPractice(recommendation.skillId)}>
-            <Text style={styles.primaryButtonText}>Practica</Text>
-          </Pressable>
-          <Pressable style={styles.primaryButtonCompact} onPress={() => recommendation?.skillId && void openTutor(recommendation.skillId)}>
-            <Text style={styles.primaryButtonText}>Tutor</Text>
-          </Pressable>
-          <Pressable style={styles.secondaryButtonCompact} onPress={() => setScreen('skills')}>
-            <Text style={styles.secondaryButtonText}>Mapa</Text>
-          </Pressable>
-        </View>
-        <Text style={styles.subsectionTitle}>Asignaciones activas</Text>
-        {studentAssignments.length === 0 ? <Text style={styles.helperText}>Sin asignaciones activas.</Text> : null}
-        {studentAssignments.map((assignment) => (
-          <View key={assignment.id} style={styles.assignmentCard}>
-            <Text style={styles.assignmentTitle}>{assignment.skills?.name ?? assignment.skill_id}</Text>
-            <Text style={styles.helperText}>
-              {assignment.skills?.area ?? 'area'} · vence {new Date(assignment.deadline).toLocaleDateString()}
-            </Text>
-            <Text style={styles.helperText}>
-              {assignment.isCompleted ? 'Completada' : 'Pendiente'}
-            </Text>
+      <View style={{ gap: 16 }}>
+        {/* Welcome card */}
+        <View style={styles.welcomeCard}>
+          <Text style={styles.welcomeEmoji}>👋</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.welcomeTitle}>¡Hola!</Text>
+            <Text style={styles.welcomeSub}>{grade} · {areas || 'Sin área seleccionada'}</Text>
           </View>
-        ))}
+        </View>
+
+        {/* Recommendation */}
+        {recommendation ? (
+          <View style={styles.recCard}>
+            <View style={styles.recHeader}>
+              <Text style={styles.recBadge}>Recomendado</Text>
+            </View>
+            <Text style={styles.recSkill}>{recommendation.skillName}</Text>
+            <Text style={styles.recArea}>{areaLabel(recommendation.area ?? '')}</Text>
+            <View style={styles.recActions}>
+              <Pressable
+                style={[styles.recBtn, { backgroundColor: C.primary }]}
+                onPress={() => void openPractice(recommendation.skillId)}
+              >
+                <Text style={styles.recBtnTextWhite}>📝 Practicar</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.recBtn, { backgroundColor: '#eff6ff', borderWidth: 1, borderColor: '#93c5fd' }]}
+                onPress={() => void openTutor(recommendation.skillId)}
+              >
+                <Text style={[styles.recBtnText, { color: '#1d4ed8' }]}>💡 Tutor</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.recBtn, { backgroundColor: C.surfaceAlt }]}
+                onPress={() => setScreen('skills')}
+              >
+                <Text style={styles.recBtnText}>🗺 Mapa</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>Sin contenido local. Conecta a internet para descargar tu material.</Text>
+          </View>
+        )}
+
+        {/* Assignments */}
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Asignaciones activas</Text>
+          {studentAssignments.length === 0 ? (
+            <Text style={styles.caption}>No tienes asignaciones pendientes.</Text>
+          ) : (
+            studentAssignments.map((a) => (
+              <Pressable key={a.id} style={styles.assignCard} onPress={() => void openPractice(a.skill_id)}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.assignTitle}>{a.skills?.name ?? a.skill_id}</Text>
+                  <Text style={styles.assignMeta}>
+                    {areaLabel(a.skills?.area ?? '')} · vence {new Date(a.deadline).toLocaleDateString('es-VE')}
+                  </Text>
+                </View>
+                <View style={[styles.statusDot, { backgroundColor: a.isCompleted ? C.success : C.warning }]} />
+              </Pressable>
+            ))
+          )}
+        </View>
       </View>
     );
   }
 
   function renderPractice() {
     return (
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Practica por habilidad</Text>
-        <Text style={styles.helperText}>{activeSkill?.name ?? 'Sin habilidad seleccionada'}</Text>
-        {practiceExercises.map((exercise) => (
-          <View key={exercise.id} style={styles.exerciseCard}>
-            <Text style={styles.exerciseTitle}>{exercise.content.question ?? 'Ejercicio'}</Text>
-            {(exercise.content.options ?? []).map((option) => (
-              <Pressable
-                key={option}
-                style={styles.optionButton}
-                onPress={() => setPracticeAnswers((current) => ({ ...current, [exercise.id]: option }))}
-              >
-                <Text style={styles.optionText}>{option}</Text>
-              </Pressable>
-            ))}
-            {!(exercise.content.options ?? []).length ? (
-              <Field
-                label="Respuesta"
-                value={practiceAnswers[exercise.id] ?? ''}
-                onChangeText={(value) => setPracticeAnswers((current) => ({ ...current, [exercise.id]: value }))}
-              />
-            ) : null}
-            <Pressable style={styles.primaryButtonCompact} onPress={() => void handlePracticeSubmit(exercise)}>
-              <Text style={styles.primaryButtonText}>Evaluar</Text>
-            </Pressable>
-            {practiceFeedback[exercise.id] ? (
-              <Text style={styles.feedbackText}>{practiceFeedback[exercise.id]}</Text>
-            ) : null}
+      <View style={{ gap: 16 }}>
+        {/* Skill header */}
+        <View style={styles.skillHeader}>
+          <Pressable onPress={() => setScreen('student-home')}>
+            <Text style={styles.backBtn}>← Inicio</Text>
+          </Pressable>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.skillHeaderTitle}>{activeSkill?.name ?? 'Práctica'}</Text>
+            <Text style={styles.skillHeaderArea}>{areaIcon(activeSkill?.area ?? '')} {areaLabel(activeSkill?.area ?? '')}</Text>
           </View>
-        ))}
-        {exitTicket ? (
-          <View style={styles.exitTicket}>
-            <Text style={styles.sectionTitle}>Ticket de salida</Text>
-            <Text style={styles.helperText}>Accuracy: {exitTicket.accuracyRate}%</Text>
-            <Text style={styles.helperText}>
-              Proximo skill: {exitTicket.recommendedSkillId ?? 'seguir practicando'}
-            </Text>
+        </View>
+
+        {practiceExercises.map((exercise, idx) => {
+          const selected = practiceAnswers[exercise.id];
+          const feedback = practiceFeedback[exercise.id];
+          const isCorrect = feedback && !feedback.toLowerCase().includes('incorrecto') && !feedback.toLowerCase().includes('error');
+
+          return (
+            <View key={exercise.id} style={styles.exerciseCard}>
+              <View style={styles.exerciseNumRow}>
+                <View style={styles.exerciseNumBadge}><Text style={styles.exerciseNumText}>{idx + 1}</Text></View>
+                <Text style={styles.exerciseMeta}>Ejercicio</Text>
+              </View>
+              <Text style={styles.exerciseQ}>{exercise.content.question ?? 'Ejercicio'}</Text>
+
+              {(exercise.content.options ?? []).map((opt) => {
+                const isSelected = selected === opt;
+                return (
+                  <Pressable
+                    key={opt}
+                    style={[styles.optionBtn, isSelected && styles.optionBtnSelected]}
+                    onPress={() => setPracticeAnswers((c) => ({ ...c, [exercise.id]: opt }))}
+                  >
+                    <View style={[styles.optionRadio, isSelected && styles.optionRadioActive]} />
+                    <Text style={[styles.optionText, isSelected && styles.optionTextSelected]}>{opt}</Text>
+                  </Pressable>
+                );
+              })}
+
+              {!(exercise.content.options ?? []).length && (
+                <Field
+                  label="Tu respuesta"
+                  value={practiceAnswers[exercise.id] ?? ''}
+                  onChangeText={(v) => setPracticeAnswers((c) => ({ ...c, [exercise.id]: v }))}
+                />
+              )}
+
+              {!feedback && (
+                <Pressable style={styles.evalBtn} onPress={() => void handlePracticeSubmit(exercise)}>
+                  <Text style={styles.evalBtnText}>Evaluar respuesta</Text>
+                </Pressable>
+              )}
+
+              {feedback && (
+                <View style={[styles.feedbackBanner, { backgroundColor: isCorrect ? '#d1fae5' : '#fee2e2' }]}>
+                  <Text style={[styles.feedbackText, { color: isCorrect ? '#065f46' : '#991b1b' }]}>
+                    {isCorrect ? '✓ ' : '✗ '}{feedback}
+                  </Text>
+                </View>
+              )}
+            </View>
+          );
+        })}
+
+        {exitTicket && (
+          <View style={styles.exitTicketCard}>
+            <Text style={styles.exitTitle}>🎯 Sesión completada</Text>
+            <Text style={styles.exitAccuracy}>{exitTicket.accuracyRate}%</Text>
+            <Text style={styles.exitLabel}>precisión</Text>
+            {exitTicket.recommendedSkillId && (
+              <Text style={styles.caption}>Próxima habilidad recomendada lista.</Text>
+            )}
+            <Btn label="Volver al inicio" variant="outline" onPress={() => setScreen('student-home')} />
           </View>
-        ) : null}
-        <Pressable style={styles.secondaryButtonWide} onPress={() => setScreen('student-home')}>
-          <Text style={styles.secondaryButtonText}>Volver al inicio</Text>
-        </Pressable>
+        )}
+
+        {!exitTicket && (
+          <Btn label="← Volver al inicio" variant="outline" onPress={() => setScreen('student-home')} />
+        )}
       </View>
     );
   }
 
   function renderTutor() {
     return (
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Tutor socratico</Text>
-        <Text style={styles.helperText}>{activeSkill?.name ?? 'Sin habilidad seleccionada'}</Text>
-        {chatTurns.map((turn) => (
-          <View key={turn.id} style={[styles.chatBubble, turn.role === 'user' ? styles.chatBubbleUser : styles.chatBubbleAssistant]}>
-            <Text style={styles.chatRole}>{turn.role === 'user' ? 'Tu' : 'Tutor'}</Text>
-            <Text style={styles.chatMessage}>{turn.message}</Text>
+      <View style={{ gap: 0 }}>
+        {/* Header */}
+        <View style={styles.tutorHeader}>
+          <Pressable onPress={() => setScreen('student-home')}>
+            <Text style={styles.backBtn}>← Inicio</Text>
+          </Pressable>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={styles.skillHeaderTitle}>Tutor socrático</Text>
+            <Text style={styles.skillHeaderArea}>{areaIcon(activeSkill?.area ?? '')} {activeSkill?.name ?? 'Sin habilidad'}</Text>
           </View>
-        ))}
-        <Field label="Escribe tu duda" value={chatInput} onChangeText={setChatInput} />
-        <Pressable style={styles.primaryButton} onPress={() => void sendTutorMessage()}>
-          <Text style={styles.primaryButtonText}>Enviar</Text>
-        </Pressable>
-        <Pressable style={styles.secondaryButtonWide} onPress={() => setScreen('student-home')}>
-          <Text style={styles.secondaryButtonText}>Volver al inicio</Text>
-        </Pressable>
+          <View style={[styles.modeBadge, { backgroundColor: isConnected ? '#d1fae5' : '#fef3c7' }]}>
+            <Text style={[styles.modeBadgeText, { color: isConnected ? '#065f46' : '#92400e' }]}>
+              {isConnected ? 'IA activa' : 'Offline'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Chat messages */}
+        <View style={styles.chatContainer}>
+          {chatTurns.length === 0 && (
+            <View style={styles.emptyChatCard}>
+              <Text style={styles.emptyChatIcon}>💬</Text>
+              <Text style={styles.emptyChatText}>
+                Haz una pregunta sobre {activeSkill?.name ?? 'esta habilidad'} y el tutor te guiará a encontrar la respuesta.
+              </Text>
+            </View>
+          )}
+          {chatTurns.map((turn) => (
+            <View
+              key={turn.id}
+              style={[styles.bubble, turn.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant]}
+            >
+              <Text style={[styles.bubbleRole, { color: turn.role === 'user' ? '#1d4ed8' : C.primary }]}>
+                {turn.role === 'user' ? 'Tú' : '🤖 Tutor'}
+              </Text>
+              <Text style={styles.bubbleMsg}>{turn.message}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Input */}
+        <View style={styles.chatInputRow}>
+          <TextInput
+            style={styles.chatInput}
+            value={chatInput}
+            onChangeText={setChatInput}
+            placeholder="Escribe tu pregunta..."
+            placeholderTextColor="#9ca3af"
+            multiline
+            autoCapitalize="none"
+          />
+          <Pressable
+            style={[styles.sendBtn, !chatInput.trim() && { opacity: 0.4 }]}
+            onPress={() => void sendTutorMessage()}
+            disabled={!chatInput.trim()}
+          >
+            <Text style={styles.sendBtnText}>↑</Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
@@ -888,91 +1105,167 @@ export default function App() {
   function renderSkills() {
     return (
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Mapa de habilidades</Text>
-        {mastery.map((entry) => (
-          <Pressable
-            key={entry.skillId}
-            style={styles.skillRow}
-            onPress={() => void openPractice(entry.skillId)}
-          >
-            <View>
-              <Text style={styles.skillName}>{entry.skillName}</Text>
-              <Text style={styles.helperText}>{entry.area}</Text>
-            </View>
-            <Text style={styles.skillStatus}>{entry.status} · {entry.accuracyRate}%</Text>
+        <View style={styles.skillsHeader}>
+          <Text style={styles.cardTitle}>Mapa de habilidades</Text>
+          <Pressable onPress={() => setScreen('student-home')}>
+            <Text style={styles.backBtn}>← Inicio</Text>
           </Pressable>
-        ))}
-        <Pressable style={styles.secondaryButtonWide} onPress={() => setScreen('student-home')}>
-          <Text style={styles.secondaryButtonText}>Volver al inicio</Text>
-        </Pressable>
+        </View>
+
+        {mastery.length === 0 ? (
+          <Text style={styles.caption}>Sin habilidades cargadas. Descarga contenido con conexión a internet.</Text>
+        ) : (
+          mastery.map((entry) => {
+            const cfg = statusConfig[entry.status] ?? statusConfig.disponible;
+            return (
+              <Pressable key={entry.skillId} style={styles.skillItem} onPress={() => void openPractice(entry.skillId)}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.skillItemName}>{entry.skillName}</Text>
+                  <Text style={styles.skillItemArea}>{areaLabel(entry.area)}</Text>
+                  {/* Mini progress bar */}
+                  <View style={styles.skillProgressBg}>
+                    <View style={[styles.skillProgressFill, { width: `${entry.accuracyRate}%` as any, backgroundColor: cfg.color }]} />
+                  </View>
+                </View>
+                <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                  <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
+                    <Text style={[styles.statusBadgeText, { color: cfg.color }]}>{cfg.label}</Text>
+                  </View>
+                  <Text style={[styles.accuracyText, { color: cfg.color }]}>{entry.accuracyRate}%</Text>
+                </View>
+              </Pressable>
+            );
+          })
+        )}
       </View>
     );
   }
 
   function renderTeacherHome() {
     return (
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Dashboard docente</Text>
-        {teacherSummary.map((row) => (
-          <View key={row.skill_id} style={styles.assignmentCard}>
-            <Text style={styles.assignmentTitle}>{row.skill_name}</Text>
-            <Text style={styles.helperText}>
-              {row.area} · dominado {row.pct_mastered}% · en proceso {row.pct_in_progress}%
-            </Text>
-          </View>
-        ))}
+      <View style={{ gap: 16 }}>
+        {/* Summary */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Panel docente</Text>
+          {teacherSummary.length === 0 ? (
+            <Text style={styles.caption}>Sin datos de sección disponibles.</Text>
+          ) : (
+            teacherSummary.map((row) => {
+              const domColor = row.pct_mastered >= 70 ? C.success : row.pct_mastered >= 40 ? C.warning : C.error;
+              return (
+                <View key={row.skill_id} style={styles.teacherRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.teacherSkill}>{row.skill_name}</Text>
+                    <Text style={styles.teacherArea}>{areaLabel(row.area)}</Text>
+                    <View style={styles.skillProgressBg}>
+                      <View style={[styles.skillProgressFill, { width: `${row.pct_mastered}%` as any, backgroundColor: domColor }]} />
+                    </View>
+                  </View>
+                  <View style={styles.teacherStats}>
+                    <Text style={[styles.teacherPct, { color: domColor }]}>{row.pct_mastered}%</Text>
+                    <Text style={styles.teacherPctLabel}>dominado</Text>
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </View>
 
-        <Text style={styles.subsectionTitle}>Nueva asignacion</Text>
-        <Field label="Skill ID" value={assignmentDraft.skillId} onChangeText={(skillId) => setAssignmentDraft((current) => ({ ...current, skillId }))} />
-        <Field label="Deadline ISO" value={assignmentDraft.deadline} onChangeText={(deadline) => setAssignmentDraft((current) => ({ ...current, deadline }))} />
-        <Pressable style={styles.primaryButton} onPress={() => void handleCreateAssignment()}>
-          <Text style={styles.primaryButtonText}>Asignar a toda la seccion</Text>
-        </Pressable>
+        {/* Create assignment */}
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Nueva asignación</Text>
+          <Field
+            label="ID de habilidad"
+            value={assignmentDraft.skillId}
+            onChangeText={(skillId) => setAssignmentDraft((c) => ({ ...c, skillId }))}
+          />
+          <Field
+            label="Fecha límite (ISO)"
+            value={assignmentDraft.deadline}
+            onChangeText={(deadline) => setAssignmentDraft((c) => ({ ...c, deadline }))}
+          />
+          <Btn label="Asignar a toda la sección" onPress={() => void handleCreateAssignment()} />
+        </View>
 
-        <Text style={styles.subsectionTitle}>Asignaciones activas</Text>
-        {teacherAssignments.map((assignment) => (
-          <View key={assignment.id} style={styles.assignmentCard}>
-            <Text style={styles.assignmentTitle}>{assignment.skills?.name ?? assignment.skill_id}</Text>
-            <Text style={styles.helperText}>
-              {assignment.completionRate ?? 0}% completado · {assignment.completionCount ?? 0}/{assignment.targetedCount ?? 0}
-            </Text>
-          </View>
-        ))}
+        {/* Active assignments */}
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Asignaciones activas</Text>
+          {teacherAssignments.length === 0 ? (
+            <Text style={styles.caption}>Sin asignaciones activas.</Text>
+          ) : (
+            teacherAssignments.map((a) => (
+              <View key={a.id} style={styles.assignCard}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.assignTitle}>{a.skills?.name ?? a.skill_id}</Text>
+                  <Text style={styles.assignMeta}>
+                    {a.completionCount ?? 0}/{a.targetedCount ?? 0} completado ({a.completionRate ?? 0}%)
+                  </Text>
+                </View>
+                {/* Completion bar */}
+                <View style={[styles.skillProgressBg, { width: 60 }]}>
+                  <View style={[styles.skillProgressFill, { width: `${a.completionRate ?? 0}%` as any, backgroundColor: C.primary }]} />
+                </View>
+              </View>
+            ))
+          )}
+        </View>
       </View>
     );
   }
+
+  // ─── Root render ─────────────────────────────────────────────────────────────
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       {renderHeader()}
-      {isBusy ? <ActivityIndicator style={styles.loader} size="large" /> : null}
-      {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
-      <ScrollView contentContainerStyle={styles.container}>
-        {screen === 'auth' ? renderAuth() : null}
-        {screen === 'connection-test' ? renderConnectionTest() : null}
-        {screen === 'onboarding' ? renderOnboarding() : null}
-        {screen === 'diagnostic' ? renderDiagnostic() : null}
-        {screen === 'student-home' ? renderStudentHome() : null}
-        {screen === 'practice' ? renderPractice() : null}
-        {screen === 'tutor' ? renderTutor() : null}
-        {screen === 'skills' ? renderSkills() : null}
-        {screen === 'teacher-home' ? renderTeacherHome() : null}
-        {screen === 'loading' ? (
-          <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Preparando TutorIA...</Text>
+
+      {isBusy && (
+        <View style={styles.busyBar}>
+          <ActivityIndicator size="small" color={C.primary} />
+          <Text style={styles.busyText}>Procesando...</Text>
+        </View>
+      )}
+
+      {errorMessage && (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorBannerText}>⚠ {errorMessage}</Text>
+          <Pressable onPress={() => setErrorMessage(null)}>
+            <Text style={styles.errorBannerClose}>✕</Text>
+          </Pressable>
+        </View>
+      )}
+
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        {screen === 'loading' && (
+          <View style={[styles.card, { alignItems: 'center', gap: 16, paddingVertical: 40 }]}>
+            <Text style={{ fontSize: 48 }}>🎓</Text>
+            <Text style={styles.cardTitle}>TutorIA Venezuela</Text>
+            <ActivityIndicator color={C.primary} />
           </View>
-        ) : null}
+        )}
+        {screen === 'auth' && renderAuth()}
+        {screen === 'connection-test' && renderConnectionTest()}
+        {screen === 'onboarding' && renderOnboarding()}
+        {screen === 'diagnostic' && renderDiagnostic()}
+        {screen === 'student-home' && renderStudentHome()}
+        {screen === 'practice' && renderPractice()}
+        {screen === 'tutor' && renderTutor()}
+        {screen === 'skills' && renderSkills()}
+        {screen === 'teacher-home' && renderTeacherHome()}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+// ─── Reusable components ─────────────────────────────────────────────────────
+
 function Field(props: {
   label: string;
   value: string;
   secureTextEntry?: boolean;
-  onChangeText: (value: string) => void;
+  autoComplete?: string;
+  onChangeText: (v: string) => void;
 }) {
   return (
     <View style={styles.field}>
@@ -983,20 +1276,38 @@ function Field(props: {
         secureTextEntry={props.secureTextEntry}
         onChangeText={props.onChangeText}
         autoCapitalize="none"
+        placeholderTextColor="#9ca3af"
       />
     </View>
   );
 }
 
-function ToggleButton(props: { label: string; active: boolean; onPress: () => void }) {
+function Btn(props: { label: string; variant?: 'primary' | 'outline'; onPress: () => void }) {
+  const isOutline = props.variant === 'outline';
   return (
     <Pressable
-      style={[styles.toggleButton, props.active ? styles.toggleButtonActive : null]}
+      style={[styles.btn, isOutline ? styles.btnOutline : styles.btnPrimary]}
       onPress={props.onPress}
     >
-      <Text style={[styles.toggleButtonText, props.active ? styles.toggleButtonTextActive : null]}>
+      <Text style={[styles.btnText, isOutline ? styles.btnTextOutline : styles.btnTextPrimary]}>
         {props.label}
       </Text>
+    </Pressable>
+  );
+}
+
+function Pill(props: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable style={[styles.pill, props.active && styles.pillActive]} onPress={props.onPress}>
+      <Text style={[styles.pillText, props.active && styles.pillTextActive]}>{props.label}</Text>
+    </Pressable>
+  );
+}
+
+function SegmentBtn(props: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable style={[styles.segment, props.active && styles.segmentActive]} onPress={props.onPress}>
+      <Text style={[styles.segmentText, props.active && styles.segmentTextActive]}>{props.label}</Text>
     </Pressable>
   );
 }
@@ -1005,240 +1316,672 @@ function cryptoId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+// ─── Design tokens ────────────────────────────────────────────────────────────
+
+const C = {
+  bg: '#f0ece3',
+  surface: '#fffdf8',
+  surfaceAlt: '#f5f0e8',
+  primary: '#1a6b54',
+  primaryLight: '#e8f5f0',
+  primaryDark: '#144d3c',
+  accent: '#2563eb',
+  border: '#e2d9cc',
+  borderDark: '#c4b9a8',
+  text: '#1a2e3b',
+  textMid: '#4b5563',
+  textLight: '#9ca3af',
+  success: '#059669',
+  warning: '#d97706',
+  error: '#dc2626',
+};
+
+// ─── Styles ────────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f4efe6',
+    backgroundColor: C.bg,
     paddingTop: Platform.OS === 'android' ? (RNStatusBar.currentHeight ?? 0) : 0,
   },
-  container: {
+  scroll: {
     padding: 16,
     gap: 16,
+    paddingBottom: 40,
   },
+
+  // ── Header ──
   header: {
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
+    paddingVertical: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#d8cbb2',
-    backgroundColor: '#fff7ea',
+    borderBottomColor: C.border,
+    backgroundColor: C.surface,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '700',
-    color: '#1e3d59',
+    color: C.text,
+    letterSpacing: -0.3,
   },
-  headerSubtitle: {
-    color: '#6b5d4d',
-    marginTop: 2,
+  headerSub: {
+    fontSize: 12,
+    color: C.textMid,
+    marginTop: 1,
   },
-  loader: {
-    marginTop: 12,
+  logoutBtn: {
+    borderWidth: 1,
+    borderColor: C.borderDark,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
   },
+  logoutText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: C.text,
+  },
+
+  // ── Busy / Error banners ──
+  busyBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: C.primaryLight,
+  },
+  busyText: {
+    fontSize: 13,
+    color: C.primary,
+    fontWeight: '600',
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#fee2e2',
+    borderBottomWidth: 1,
+    borderBottomColor: '#fca5a5',
+  },
+  errorBannerText: {
+    flex: 1,
+    color: '#991b1b',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  errorBannerClose: {
+    color: '#991b1b',
+    fontSize: 16,
+    paddingLeft: 12,
+    fontWeight: '700',
+  },
+
+  // ── Card ──
   card: {
-    backgroundColor: '#fffaf2',
+    backgroundColor: C.surface,
+    borderRadius: 20,
+    padding: 20,
+    gap: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    shadowColor: '#1a2e3b',
+    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+  },
+  cardTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: C.text,
+    letterSpacing: -0.4,
+  },
+  sectionLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: C.text,
+  },
+  caption: {
+    fontSize: 13,
+    color: C.textMid,
+    lineHeight: 18,
+  },
+
+  // ── Auth ──
+  logoBlock: {
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 8,
+  },
+  logoEmoji: {
+    fontSize: 48,
+  },
+  logoTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: C.text,
+    letterSpacing: -0.5,
+  },
+  logoSub: {
+    fontSize: 14,
+    color: C.textMid,
+  },
+  tabRow: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: C.surfaceAlt,
+  },
+  tabActive: {
+    backgroundColor: C.primary,
+  },
+  tabText: {
+    fontWeight: '600',
+    color: C.textMid,
+    fontSize: 14,
+  },
+  tabTextActive: {
+    color: '#fff',
+  },
+  segmentRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  segment: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 10,
+    backgroundColor: C.surfaceAlt,
+  },
+  segmentActive: {
+    backgroundColor: C.primaryLight,
+    borderColor: C.primary,
+  },
+  segmentText: {
+    fontWeight: '600',
+    color: C.textMid,
+    fontSize: 13,
+  },
+  segmentTextActive: {
+    color: C.primary,
+  },
+
+  // ── Form ──
+  field: { gap: 5 },
+  fieldLabel: { fontSize: 13, fontWeight: '600', color: C.text },
+  input: {
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 15,
+    color: C.text,
+  },
+
+  // ── Buttons ──
+  btn: {
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  btnPrimary: { backgroundColor: C.primary },
+  btnOutline: {
+    borderWidth: 1.5,
+    borderColor: C.primary,
+    backgroundColor: 'transparent',
+  },
+  btnText: { fontSize: 15, fontWeight: '700' },
+  btnTextPrimary: { color: '#fff' },
+  btnTextOutline: { color: C.primary },
+
+  // ── Pills ──
+  pillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  pillRowScroll: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingRight: 16,
+  },
+  pill: {
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    backgroundColor: '#fff',
+  },
+  pillActive: {
+    backgroundColor: C.primaryLight,
+    borderColor: C.primary,
+  },
+  pillText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: C.textMid,
+  },
+  pillTextActive: {
+    color: C.primary,
+  },
+
+  // ── Onboarding ──
+  onboardingHeader: {
+    alignItems: 'center',
+    gap: 4,
+    paddingBottom: 4,
+  },
+  stepBlock: {
+    gap: 10,
+    backgroundColor: C.surfaceAlt,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  stepBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  stepBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: C.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepBadgeText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  stepTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: C.text,
+  },
+  areaGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  areaCard: {
+    flex: 1,
+    minWidth: 90,
+    alignItems: 'center',
+    gap: 6,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    backgroundColor: '#fff',
+  },
+  areaCardActive: {
+    backgroundColor: C.primaryLight,
+    borderColor: C.primary,
+  },
+  areaIcon: { fontSize: 28 },
+  areaLabel: { fontSize: 13, fontWeight: '600', color: C.textMid, textAlign: 'center' },
+  areaLabelActive: { color: C.primary },
+  areaCheck: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: C.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  areaCheckText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+
+  // ── Diagnostic ──
+  progressBar: {
+    height: 6,
+    backgroundColor: C.border,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: C.primary,
+    borderRadius: 999,
+  },
+  diagCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  diagNum: { fontSize: 11, fontWeight: '700', color: C.textLight, textTransform: 'uppercase', letterSpacing: 0.5 },
+  diagQuestion: { fontSize: 15, fontWeight: '600', color: C.text, lineHeight: 22 },
+  diagBtnRow: { flexDirection: 'row', gap: 8 },
+  diagBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    alignItems: 'center',
+    backgroundColor: C.surfaceAlt,
+  },
+  diagBtnYes: { backgroundColor: C.success, borderColor: C.success },
+  diagBtnNo: { backgroundColor: C.error, borderColor: C.error },
+  diagBtnText: { fontWeight: '700', color: C.textMid, fontSize: 13 },
+
+  // ── Student home ──
+  welcomeCard: {
+    backgroundColor: C.primary,
+    borderRadius: 20,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  welcomeEmoji: { fontSize: 36 },
+  welcomeTitle: { fontSize: 20, fontWeight: '700', color: '#fff' },
+  welcomeSub: { fontSize: 13, color: 'rgba(255,255,255,0.75)', marginTop: 2 },
+  recCard: {
+    backgroundColor: C.surface,
+    borderRadius: 20,
+    padding: 20,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+    shadowColor: C.primary,
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+  },
+  recHeader: { flexDirection: 'row' },
+  recBadge: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: C.primary,
+    backgroundColor: C.primaryLight,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  recSkill: { fontSize: 20, fontWeight: '700', color: C.text, letterSpacing: -0.3 },
+  recArea: { fontSize: 13, color: C.textMid },
+  recActions: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  recBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  recBtnTextWhite: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  recBtnText: { fontWeight: '700', fontSize: 14 },
+  emptyCard: {
+    backgroundColor: '#fef3c7',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  emptyText: { color: '#92400e', fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  assignCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
+  assignTitle: { fontSize: 14, fontWeight: '600', color: C.text },
+  assignMeta: { fontSize: 12, color: C.textMid, marginTop: 2 },
+  statusDot: { width: 10, height: 10, borderRadius: 5 },
+
+  // ── Skill header (shared) ──
+  skillHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.surface,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  backBtn: { color: C.primary, fontWeight: '600', fontSize: 14 },
+  skillHeaderTitle: { fontSize: 16, fontWeight: '700', color: C.text },
+  skillHeaderArea: { fontSize: 12, color: C.textMid, marginTop: 2 },
+
+  // ── Practice ──
+  exerciseCard: {
+    backgroundColor: C.surface,
     borderRadius: 18,
     padding: 16,
     gap: 12,
     borderWidth: 1,
-    borderColor: '#e3d6c3',
-    shadowColor: '#7b6954',
-    shadowOpacity: 0.08,
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 18,
+    borderColor: C.border,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#17324d',
+  exerciseNumRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  exerciseNumBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: C.surfaceAlt,
+    borderWidth: 1,
+    borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  subsectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#17324d',
-    marginTop: 8,
-  },
-  helperText: {
-    color: '#5b5b52',
-    lineHeight: 20,
-  },
-  row: {
+  exerciseNumText: { fontSize: 12, fontWeight: '700', color: C.textMid },
+  exerciseMeta: { fontSize: 12, color: C.textLight, fontWeight: '500' },
+  exerciseQ: { fontSize: 16, fontWeight: '600', color: C.text, lineHeight: 23 },
+  optionBtn: {
     flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  rowWrap: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  field: {
-    gap: 6,
-  },
-  fieldLabel: {
-    color: '#17324d',
-    fontWeight: '600',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#d0c1ae',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  primaryButton: {
-    backgroundColor: '#1e6f5c',
-    borderRadius: 12,
-    paddingVertical: 12,
     alignItems: 'center',
-  },
-  primaryButtonCompact: {
-    backgroundColor: '#1e6f5c',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderColor: '#1e3d59',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  secondaryButtonWide: {
-    borderWidth: 1,
-    borderColor: '#1e3d59',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  secondaryButtonCompact: {
-    borderWidth: 1,
-    borderColor: '#1e3d59',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  secondaryButtonText: {
-    color: '#1e3d59',
-    fontWeight: '700',
-  },
-  toggleButton: {
-    borderWidth: 1,
-    borderColor: '#d0c1ae',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: '#fff',
-  },
-  toggleButtonActive: {
-    backgroundColor: '#dbeee4',
-    borderColor: '#1e6f5c',
-  },
-  toggleButtonText: {
-    color: '#5b5b52',
-    fontWeight: '600',
-  },
-  toggleButtonTextActive: {
-    color: '#1e6f5c',
-  },
-  exerciseCard: {
-    borderWidth: 1,
-    borderColor: '#e1d4c2',
-    borderRadius: 14,
-    padding: 12,
     gap: 10,
-    backgroundColor: '#fff',
-  },
-  exerciseTitle: {
-    color: '#17324d',
-    fontWeight: '600',
-    lineHeight: 20,
-  },
-  optionButton: {
+    paddingVertical: 11,
+    paddingHorizontal: 14,
     borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#d0c1ae',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    backgroundColor: '#faf8f2',
+    borderWidth: 1.5,
+    borderColor: C.border,
+    backgroundColor: C.surfaceAlt,
   },
-  optionText: {
-    color: '#17324d',
+  optionBtnSelected: {
+    backgroundColor: C.primaryLight,
+    borderColor: C.primary,
+  },
+  optionRadio: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: C.border,
+  },
+  optionRadioActive: {
+    borderColor: C.primary,
+    backgroundColor: C.primary,
+  },
+  optionText: { fontSize: 14, color: C.textMid, flex: 1 },
+  optionTextSelected: { color: C.primary, fontWeight: '600' },
+  evalBtn: {
+    backgroundColor: C.primary,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  evalBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  feedbackBanner: {
+    borderRadius: 10,
+    padding: 12,
   },
   feedbackText: {
-    color: '#1e6f5c',
+    fontSize: 14,
     fontWeight: '600',
-  },
-  exitTicket: {
-    borderWidth: 1,
-    borderColor: '#1e6f5c',
-    borderRadius: 16,
-    padding: 14,
-    backgroundColor: '#eef7f2',
-    gap: 6,
-  },
-  chatBubble: {
-    padding: 12,
-    borderRadius: 14,
-    gap: 4,
-  },
-  chatBubbleUser: {
-    backgroundColor: '#dbeee4',
-  },
-  chatBubbleAssistant: {
-    backgroundColor: '#eef0f5',
-  },
-  chatRole: {
-    fontWeight: '700',
-    color: '#17324d',
-  },
-  chatMessage: {
-    color: '#2f3f4d',
     lineHeight: 20,
   },
-  assignmentCard: {
+  exitTicketCard: {
+    backgroundColor: '#ecfdf5',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    gap: 6,
     borderWidth: 1,
-    borderColor: '#e1d4c2',
+    borderColor: '#6ee7b7',
+  },
+  exitTitle: { fontSize: 18, fontWeight: '700', color: '#065f46' },
+  exitAccuracy: { fontSize: 52, fontWeight: '700', color: C.success, letterSpacing: -2 },
+  exitLabel: { fontSize: 14, color: '#065f46', marginBottom: 8 },
+
+  // ── Tutor ──
+  tutorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: C.surface,
     borderRadius: 14,
-    padding: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginBottom: 12,
+  },
+  modeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  modeBadgeText: { fontSize: 12, fontWeight: '700' },
+  chatContainer: { gap: 10, marginBottom: 12 },
+  emptyChatCard: {
+    alignItems: 'center',
+    gap: 10,
+    padding: 32,
+    backgroundColor: C.surfaceAlt,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  emptyChatIcon: { fontSize: 36 },
+  emptyChatText: { color: C.textMid, fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  bubble: {
+    padding: 14,
+    borderRadius: 16,
     gap: 4,
-    backgroundColor: '#fff',
+    maxWidth: '88%',
   },
-  assignmentTitle: {
-    fontWeight: '700',
-    color: '#17324d',
+  bubbleUser: {
+    backgroundColor: '#dbeafe',
+    alignSelf: 'flex-end',
+    borderBottomRightRadius: 4,
   },
-  skillRow: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e6dece',
+  bubbleAssistant: {
+    backgroundColor: C.primaryLight,
+    alignSelf: 'flex-start',
+    borderBottomLeftRadius: 4,
+  },
+  bubbleRole: { fontSize: 12, fontWeight: '700' },
+  bubbleMsg: { fontSize: 15, color: C.text, lineHeight: 22 },
+  chatInputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 10,
+    backgroundColor: C.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 10,
+  },
+  chatInput: {
+    flex: 1,
+    fontSize: 15,
+    color: C.text,
+    maxHeight: 100,
+    lineHeight: 20,
+  },
+  sendBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: C.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendBtnText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+
+  // ── Skills map ──
+  skillsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 12,
   },
-  skillName: {
-    fontWeight: '700',
-    color: '#17324d',
+  skillItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
   },
-  skillStatus: {
-    color: '#1e6f5c',
-    fontWeight: '600',
+  skillItemName: { fontSize: 14, fontWeight: '700', color: C.text },
+  skillItemArea: { fontSize: 12, color: C.textMid, marginTop: 2 },
+  skillProgressBg: {
+    height: 4,
+    backgroundColor: C.border,
+    borderRadius: 999,
+    marginTop: 6,
+    overflow: 'hidden',
+    flex: 1,
   },
-  errorText: {
-    color: '#a11c1c',
-    paddingHorizontal: 16,
-    marginTop: 12,
+  skillProgressFill: { height: '100%', borderRadius: 999 },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
   },
+  statusBadgeText: { fontSize: 11, fontWeight: '700' },
+  accuracyText: { fontSize: 13, fontWeight: '700' },
+
+  // ── Teacher ──
+  teacherRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
+  teacherSkill: { fontSize: 14, fontWeight: '700', color: C.text },
+  teacherArea: { fontSize: 12, color: C.textMid, marginTop: 2 },
+  teacherStats: { alignItems: 'flex-end', minWidth: 56 },
+  teacherPct: { fontSize: 20, fontWeight: '700' },
+  teacherPctLabel: { fontSize: 10, color: C.textLight, fontWeight: '600' },
+
+  // ── Debug ──
+  debugRow: {
+    padding: 10,
+    borderRadius: 10,
+    gap: 4,
+  },
+  debugLabel: { fontWeight: '700', color: C.text, fontSize: 13 },
+  debugDetail: { color: C.textMid, fontSize: 12 },
 });
