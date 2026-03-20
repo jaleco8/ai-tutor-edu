@@ -26,6 +26,7 @@ jobs:
       RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
     steps:
       - name: Checkout repository
@@ -39,18 +40,32 @@ jobs:
       - name: Validate required secrets
         run: |
           : "${SUPABASE_ACCESS_TOKEN:?GitHub secret SUPABASE_ACCESS_TOKEN is required}"
-          : "${SUPABASE_DB_PASSWORD:?GitHub secret SUPABASE_DB_PASSWORD is required}"
-          : "${SUPABASE_PROJECT_REF:?GitHub secret SUPABASE_PROJECT_REF is required}"
           : "${RENDER_DEPLOY_HOOK_URL:?GitHub secret RENDER_DEPLOY_HOOK_URL is required}"
 
+          if [ -z "${SUPABASE_DB_URL:-}" ]; then
+            : "${SUPABASE_PROJECT_REF:?GitHub secret SUPABASE_PROJECT_REF is required when SUPABASE_DB_URL is not set}"
+            : "${SUPABASE_DB_PASSWORD:?GitHub secret SUPABASE_DB_PASSWORD is required when SUPABASE_DB_URL is not set}"
+          fi
+
       - name: Link Supabase project
+        if: env.SUPABASE_DB_URL == ''
         run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
 
       - name: Preview pending migrations
-        run: supabase db push --linked --dry-run --password "$SUPABASE_DB_PASSWORD"
+        run: |
+          if [ -n "${SUPABASE_DB_URL:-}" ]; then
+            supabase db push --db-url "$SUPABASE_DB_URL" --dry-run
+          else
+            supabase db push --linked --dry-run --password "$SUPABASE_DB_PASSWORD"
+          fi
 
       - name: Apply migrations
-        run: supabase db push --linked --password "$SUPABASE_DB_PASSWORD"
+        run: |
+          if [ -n "${SUPABASE_DB_URL:-}" ]; then
+            supabase db push --db-url "$SUPABASE_DB_URL"
+          else
+            supabase db push --linked --password "$SUPABASE_DB_PASSWORD"
+          fi
 
       - name: Trigger Render deploy for this commit
         run: curl --fail-with-body --silent --show-error --request POST "${RENDER_DEPLOY_HOOK_URL}?ref=${GITHUB_SHA}"
