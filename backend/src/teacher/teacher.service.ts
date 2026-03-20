@@ -151,18 +151,28 @@ export class TeacherService {
     const client = this.supabase.getClient();
     const { data, error } = await client
       .from('profiles')
-      .select('school_code, section_id, sections(section_code)')
+      .select('school_code, section_id')
       .eq('id', teacherId)
-      .single<{ school_code: string; section_id: string | null; sections: { section_code: string } | null }>();
+      .single<{ school_code: string; section_id: string | null }>();
 
-    if (error || !data?.section_id || !data.sections?.section_code) {
+    if (error || !data?.section_id) {
+      throw new BadRequestException('Teacher section not configured');
+    }
+
+    const { data: section, error: sectionError } = await client
+      .from('sections')
+      .select('section_code')
+      .eq('id', data.section_id)
+      .single<{ section_code: string }>();
+
+    if (sectionError || !section?.section_code) {
       throw new BadRequestException('Teacher section not configured');
     }
 
     return {
       schoolCode: data.school_code,
       sectionId: data.section_id,
-      sectionCode: data.sections.section_code,
+      sectionCode: section.section_code,
     };
   }
 }

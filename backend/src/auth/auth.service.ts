@@ -17,7 +17,6 @@ interface ProfileRecord {
   school_code: string;
   section_id: string | null;
   is_minor: boolean;
-  sections: { section_code: string } | null;
 }
 
 @Injectable()
@@ -102,15 +101,26 @@ export class AuthService {
 
   async getProfile(userId: string, accessToken: string) {
     const client = this.supabase.getClientForUser(accessToken);
+    const serviceClient = this.supabase.getClient();
 
     const { data: profile, error } = await client
       .from('profiles')
-      .select('pseudonym_id, role, school_code, section_id, is_minor, sections(section_code)')
+      .select('pseudonym_id, role, school_code, section_id, is_minor')
       .eq('id', userId)
       .single<ProfileRecord>();
 
     if (error || !profile) {
       throw new UnauthorizedException('Profile not found');
+    }
+
+    let sectionCode: string | null = null;
+    if (profile.section_id) {
+      const { data: section } = await serviceClient
+        .from('sections')
+        .select('section_code')
+        .eq('id', profile.section_id)
+        .single();
+      sectionCode = section?.section_code ?? null;
     }
 
     const { data: studentProfile } = await client
@@ -123,7 +133,7 @@ export class AuthService {
       pseudonymId: profile.pseudonym_id,
       role: profile.role,
       schoolCode: profile.school_code,
-      sectionCode: profile.sections?.section_code ?? null,
+      sectionCode,
       sectionId: profile.section_id,
       isMinor: profile.is_minor,
       gradeLevel: studentProfile?.grade_level ?? null,
@@ -175,11 +185,25 @@ export class AuthService {
     userId: string,
     session: Session,
   ) {
-    const { data: profile } = await client
+    const { data: profile, error: profileError } = await client
       .from('profiles')
-      .select('pseudonym_id, role, school_code, section_id, is_minor, sections(section_code)')
+      .select('pseudonym_id, role, school_code, section_id, is_minor')
       .eq('id', userId)
       .single<ProfileRecord>();
+
+    if (profileError) {
+      console.error('buildAuthResponse: profile query error', profileError);
+    }
+
+    let sectionCode: string | null = null;
+    if (profile?.section_id) {
+      const { data: section } = await client
+        .from('sections')
+        .select('section_code')
+        .eq('id', profile.section_id)
+        .single();
+      sectionCode = section?.section_code ?? null;
+    }
 
     const { data: studentProfile } = await client
       .from('student_profiles')
@@ -191,7 +215,7 @@ export class AuthService {
       pseudonymId: profile?.pseudonym_id ?? null,
       role: profile?.role ?? null,
       schoolCode: profile?.school_code ?? null,
-      sectionCode: profile?.sections?.section_code ?? null,
+      sectionCode,
       sectionId: profile?.section_id ?? null,
       isMinor: profile?.is_minor ?? null,
       gradeLevel: studentProfile?.grade_level ?? null,

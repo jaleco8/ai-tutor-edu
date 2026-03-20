@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(BASE=\"https://ai-tutor-edu.onrender.com\" __NEW_LINE_64110e091ad5414b__ echo \"========================================\" echo \"1. HEALTH CHECK\" echo \"========================================\" curl -s -w \"\\\\n[STATUS: %{http_code}]\\\\n\" \"$BASE/health\")"
+    ]
+  }
+}
