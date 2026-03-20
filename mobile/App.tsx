@@ -39,10 +39,12 @@ import {
 } from './src/db/database';
 import { appendChatTurn, buildExitTicket, buildRecommendation, evaluateLocalExercise } from './src/utils/learning';
 import { AssignmentSummary, AuthSession, ChatTurn, ExitTicket, LocalExercise, LocalMastery, LocalSkill, TeacherSummaryRow, TutorMode, UserRole } from './src/types';
+import { API_URL } from './src/config';
 
 type Screen =
   | 'loading'
   | 'auth'
+  | 'connection-test'
   | 'onboarding'
   | 'diagnostic'
   | 'student-home'
@@ -116,6 +118,12 @@ export default function App() {
     skillId: '',
     deadline: new Date(Date.now() + (3 * 24 * 60 * 60 * 1000)).toISOString(),
   });
+
+  // --- DEBUG: connection test (temporal) ---
+  const [debugLog, setDebugLog] = useState<Array<{ label: string; status: 'pending' | 'ok' | 'error'; detail: string }>>([]);
+  const [debugEmail, setDebugEmail] = useState('');
+  const [debugPassword, setDebugPassword] = useState('');
+  // -----------------------------------------
 
   const recommendation = useMemo(() => buildRecommendation(skills, mastery), [skills, mastery]);
   const activeSkill = useMemo(
@@ -221,7 +229,13 @@ export default function App() {
           password: authForm.password,
         });
 
-      const profile = await fetchProfile(nextSession.accessToken);
+      let profile = nextSession.profile;
+      try {
+        profile = await fetchProfile(nextSession.accessToken);
+      } catch {
+        // /auth/me puede fallar si el perfil aún no es visible vía RLS;
+        // usamos los datos que retornó el login/register como fallback.
+      }
       const mergedSession = { ...nextSession, profile };
       await saveSession(mergedSession);
       setSession(mergedSession);
@@ -539,6 +553,73 @@ export default function App() {
     }
   }
 
+  // --- DEBUG: pantalla temporal para verificar conectividad con el backend ---
+  function renderConnectionTest() {
+    async function runCheck(label: string, fn: () => Promise<string>) {
+      setDebugLog((prev) => [...prev, { label, status: 'pending', detail: '...' }]);
+      try {
+        const detail = await fn();
+        setDebugLog((prev) =>
+          prev.map((entry) => entry.label === label ? { label, status: 'ok', detail } : entry),
+        );
+      } catch (err) {
+        setDebugLog((prev) =>
+          prev.map((entry) => entry.label === label ? { label, status: 'error', detail: err instanceof Error ? err.message : String(err) } : entry),
+        );
+      }
+    }
+
+    function clearLog() {
+      setDebugLog([]);
+    }
+
+    return (
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Prueba de conexion</Text>
+        <Text style={[styles.helperText, { fontFamily: 'monospace' }]}>URL: {API_URL}</Text>
+
+        <Pressable style={styles.primaryButton} onPress={() => void runCheck('GET /health', async () => {
+          const res = await fetch(`${API_URL}/health`);
+          const json = await res.json() as Record<string, unknown>;
+          return `${res.status} — ${JSON.stringify(json)}`;
+        })}>
+          <Text style={styles.primaryButtonText}>Ping /health</Text>
+        </Pressable>
+
+        <Text style={styles.subsectionTitle}>Login de prueba</Text>
+        <Field label="Email" value={debugEmail} onChangeText={setDebugEmail} />
+        <Field label="Password" secureTextEntry value={debugPassword} onChangeText={setDebugPassword} />
+        <Pressable style={styles.primaryButton} onPress={() => void runCheck('POST /auth/login', async () => {
+          const res = await fetch(`${API_URL}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: debugEmail, password: debugPassword }),
+          });
+          const text = await res.text();
+          return `${res.status} — ${text.slice(0, 200)}`;
+        })}>
+          <Text style={styles.primaryButtonText}>Probar login</Text>
+        </Pressable>
+
+        <Pressable style={styles.secondaryButton} onPress={clearLog}>
+          <Text style={styles.secondaryButtonText}>Limpiar log</Text>
+        </Pressable>
+
+        {debugLog.map((entry, i) => (
+          <View key={i} style={{ padding: 8, backgroundColor: entry.status === 'ok' ? '#d4edda' : entry.status === 'error' ? '#f8d7da' : '#fff3cd', borderRadius: 8 }}>
+            <Text style={{ fontWeight: '700', color: '#17324d' }}>{entry.label}</Text>
+            <Text style={{ color: '#2f3f4d', fontSize: 12 }}>{entry.detail}</Text>
+          </View>
+        ))}
+
+        <Pressable style={styles.secondaryButtonWide} onPress={() => setScreen('auth')}>
+          <Text style={styles.secondaryButtonText}>Volver al login</Text>
+        </Pressable>
+      </View>
+    );
+  }
+  // ---------------------------------------------------------------------------
+
   function renderHeader() {
     return (
       <View style={styles.header}>
@@ -601,6 +682,11 @@ export default function App() {
         <Pressable style={styles.primaryButton} onPress={handleAuthSubmit}>
           <Text style={styles.primaryButtonText}>
             {authForm.mode === 'login' ? 'Entrar' : 'Registrar'}
+          </Text>
+        </Pressable>
+        <Pressable onPress={() => setScreen('connection-test')}>
+          <Text style={[styles.helperText, { textAlign: 'center', textDecorationLine: 'underline' }]}>
+            Probar conexion con el backend
           </Text>
         </Pressable>
       </View>
@@ -864,6 +950,7 @@ export default function App() {
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
       <ScrollView contentContainerStyle={styles.container}>
         {screen === 'auth' ? renderAuth() : null}
+        {screen === 'connection-test' ? renderConnectionTest() : null}
         {screen === 'onboarding' ? renderOnboarding() : null}
         {screen === 'diagnostic' ? renderDiagnostic() : null}
         {screen === 'student-home' ? renderStudentHome() : null}

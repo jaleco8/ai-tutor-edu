@@ -9,13 +9,22 @@ npm install
 npm run start:dev
 ```
 
+Con el backend corriendo, la documentacion Swagger estara en:
+
+```text
+http://localhost:3000/api/docs
+```
+
 ## Variables de entorno
 
 ```
 SUPABASE_URL=
-SUPABASE_KEY=
+SUPABASE_SERVICE_KEY=
+SUPABASE_ANON_KEY=
 GEMINI_API_KEY=
 PORT=3000
+NODE_ENV=development
+SWAGGER_ENABLED=true
 ```
 
 ## Módulos planeados
