@@ -47,25 +47,21 @@ jobs:
             : "${SUPABASE_DB_PASSWORD:?GitHub secret SUPABASE_DB_PASSWORD is required when SUPABASE_DB_URL is not set}"
           fi
 
-      - name: Link Supabase project
-        if: env.SUPABASE_DB_URL == ''
-        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+      - name: Build DB URL
+        run: |
+          if [ -n "${SUPABASE_DB_URL:-}" ]; then
+            echo "DB_URL=${SUPABASE_DB_URL}" >> "$GITHUB_ENV"
+          else
+            # Session-mode pooler (port 5432, IPv4, supports DDL migrations)
+            # Username must be postgres.PROJECT_REF for SASL auth via pooler
+            echo "DB_URL=postgresql://postgres.${SUPABASE_PROJECT_REF}:${SUPABASE_DB_PASSWORD}@aws-1-eu-west-1.pooler.supabase.com:5432/postgres" >> "$GITHUB_ENV"
+          fi
 
       - name: Preview pending migrations
-        run: |
-          if [ -n "${SUPABASE_DB_URL:-}" ]; then
-            supabase db push --db-url "$SUPABASE_DB_URL" --dry-run
-          else
-            supabase db push --linked --dry-run --password "$SUPABASE_DB_PASSWORD"
-          fi
+        run: supabase db push --db-url "$DB_URL" --dry-run
 
       - name: Apply migrations
-        run: |
-          if [ -n "${SUPABASE_DB_URL:-}" ]; then
-            supabase db push --db-url "$SUPABASE_DB_URL"
-          else
-            supabase db push --linked --password "$SUPABASE_DB_PASSWORD"
-          fi
+        run: supabase db push --db-url "$DB_URL"
 
       - name: Trigger Render deploy for this commit
         run: curl --fail-with-body --silent --show-error --request POST "${RENDER_DEPLOY_HOOK_URL}?ref=${GITHUB_SHA}"
