@@ -359,3 +359,188 @@ BEGIN
     ('ingles', 'media_1', 1, encode(digest('ingles-media_1-v1', 'sha256'), 'hex'), NULL)
   ON CONFLICT (area, grade_level, version) DO NOTHING;
 END $$;
+
+-- ============================================================
+-- Teacher panel demo data (section summary + active assignment)
+-- ============================================================
+DO $$
+DECLARE
+  v_teacher_id UUID := '00000000-0000-0000-0001-000000000002';
+  v_student_id UUID := '00000000-0000-0000-0001-000000000001';
+  v_section_id UUID;
+  v_student_pseudonym UUID;
+  v_math_skill_1 UUID;
+  v_math_skill_2 UUID;
+  v_english_skill_1 UUID;
+  v_assignment_id UUID;
+  v_has_section_id BOOLEAN;
+  v_has_target_scope BOOLEAN;
+  v_has_target_students BOOLEAN;
+BEGIN
+  SELECT id INTO v_section_id
+  FROM sections
+  WHERE school_code = 'DEV-001' AND section_code = '1A'
+  LIMIT 1;
+
+  SELECT pseudonym_id INTO v_student_pseudonym
+  FROM profiles
+  WHERE id = v_student_id
+  LIMIT 1;
+
+  -- Ensure student onboarding context exists (required by section_skill_summary in phase2).
+  INSERT INTO student_profiles (user_id, school_level, grade_level, selected_areas)
+  VALUES (v_student_id, 'media', 'media_1', ARRAY['matematicas', 'ingles'])
+  ON CONFLICT (user_id) DO UPDATE
+    SET school_level = EXCLUDED.school_level,
+        grade_level = EXCLUDED.grade_level,
+        selected_areas = EXCLUDED.selected_areas,
+        updated_at = now();
+
+  SELECT id INTO v_math_skill_1
+  FROM skills
+  WHERE area = 'matematicas' AND grade_level = 'media_1' AND sequence_order = 1
+  LIMIT 1;
+
+  SELECT id INTO v_math_skill_2
+  FROM skills
+  WHERE area = 'matematicas' AND grade_level = 'media_1' AND sequence_order = 2
+  LIMIT 1;
+
+  SELECT id INTO v_english_skill_1
+  FROM skills
+  WHERE area = 'ingles' AND grade_level = 'media_1' AND sequence_order = 1
+  LIMIT 1;
+
+  -- Seed mastery mix so teacher summary has meaningful percentages.
+  IF v_student_pseudonym IS NOT NULL AND v_math_skill_1 IS NOT NULL THEN
+    INSERT INTO skill_mastery (
+      pseudonym_id, skill_id, status, accuracy_rate, attempts_count, source, last_practiced_at
+    )
+    VALUES (
+      v_student_pseudonym, v_math_skill_1, 'dominado', 92.0, 14, 'sync', now() - interval '1 day'
+    )
+    ON CONFLICT (pseudonym_id, skill_id) DO UPDATE
+      SET status = EXCLUDED.status,
+          accuracy_rate = EXCLUDED.accuracy_rate,
+          attempts_count = EXCLUDED.attempts_count,
+          source = EXCLUDED.source,
+          last_practiced_at = EXCLUDED.last_practiced_at,
+          updated_at = now();
+  END IF;
+
+  IF v_student_pseudonym IS NOT NULL AND v_math_skill_2 IS NOT NULL THEN
+    INSERT INTO skill_mastery (
+      pseudonym_id, skill_id, status, accuracy_rate, attempts_count, source, last_practiced_at
+    )
+    VALUES (
+      v_student_pseudonym, v_math_skill_2, 'en_proceso', 54.0, 11, 'sync', now() - interval '2 days'
+    )
+    ON CONFLICT (pseudonym_id, skill_id) DO UPDATE
+      SET status = EXCLUDED.status,
+          accuracy_rate = EXCLUDED.accuracy_rate,
+          attempts_count = EXCLUDED.attempts_count,
+          source = EXCLUDED.source,
+          last_practiced_at = EXCLUDED.last_practiced_at,
+          updated_at = now();
+  END IF;
+
+  IF v_student_pseudonym IS NOT NULL AND v_english_skill_1 IS NOT NULL THEN
+    INSERT INTO skill_mastery (
+      pseudonym_id, skill_id, status, accuracy_rate, attempts_count, source, last_practiced_at
+    )
+    VALUES (
+      v_student_pseudonym, v_english_skill_1, 'sin_datos', 0, 0, 'sync', null
+    )
+    ON CONFLICT (pseudonym_id, skill_id) DO UPDATE
+      SET status = EXCLUDED.status,
+          accuracy_rate = EXCLUDED.accuracy_rate,
+          attempts_count = EXCLUDED.attempts_count,
+          source = EXCLUDED.source,
+          last_practiced_at = EXCLUDED.last_practiced_at,
+          updated_at = now();
+  END IF;
+
+  -- Insert one active assignment, supporting both legacy and phase2 schemas.
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'assignments' AND column_name = 'section_id'
+  ) INTO v_has_section_id;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'assignments' AND column_name = 'target_scope'
+  ) INTO v_has_target_scope;
+
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'assignments' AND column_name = 'target_students'
+  ) INTO v_has_target_students;
+
+  IF v_math_skill_1 IS NOT NULL THEN
+    IF v_has_section_id AND v_has_target_scope AND v_has_target_students THEN
+      INSERT INTO assignments (
+        teacher_id, school_code, section_id, skill_id, deadline, target, target_scope, target_students, is_active
+      )
+      SELECT
+        v_teacher_id,
+        'DEV-001',
+        v_section_id,
+        v_math_skill_1,
+        now() + interval '5 days',
+        'all',
+        'all',
+        '[]'::jsonb,
+        true
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM assignments
+        WHERE teacher_id = v_teacher_id
+          AND skill_id = v_math_skill_1
+          AND is_active = true
+      );
+    ELSE
+      INSERT INTO assignments (teacher_id, school_code, skill_id, deadline, target, is_active)
+      SELECT
+        v_teacher_id,
+        'DEV-001',
+        v_math_skill_1,
+        now() + interval '5 days',
+        'all',
+        true
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM assignments
+        WHERE teacher_id = v_teacher_id
+          AND skill_id = v_math_skill_1
+          AND is_active = true
+      );
+    END IF;
+  END IF;
+
+  -- Mark completion for demo progress bars.
+  SELECT id INTO v_assignment_id
+  FROM assignments
+  WHERE teacher_id = v_teacher_id
+    AND skill_id = v_math_skill_1
+    AND is_active = true
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  IF v_assignment_id IS NOT NULL AND v_student_pseudonym IS NOT NULL THEN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = 'assignment_completions' AND column_name = 'section_id'
+    ) THEN
+      INSERT INTO assignment_completions (assignment_id, pseudonym_id, section_id, completed_at)
+      VALUES (v_assignment_id, v_student_pseudonym, v_section_id, now() - interval '6 hours')
+      ON CONFLICT (assignment_id, pseudonym_id) DO UPDATE
+        SET section_id = EXCLUDED.section_id,
+            completed_at = EXCLUDED.completed_at;
+    ELSE
+      INSERT INTO assignment_completions (assignment_id, pseudonym_id, completed_at)
+      VALUES (v_assignment_id, v_student_pseudonym, now() - interval '6 hours')
+      ON CONFLICT (assignment_id, pseudonym_id) DO UPDATE
+        SET completed_at = EXCLUDED.completed_at;
+    END IF;
+  END IF;
+END $$;

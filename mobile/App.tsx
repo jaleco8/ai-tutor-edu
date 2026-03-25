@@ -440,18 +440,35 @@ export default function App() {
 
   async function loadTeacherData(currentSession: AuthSession) {
     if (!isConnected) return;
-    try {
-      const [summary, assignments] = await Promise.all([
-        fetchTeacherSummary(currentSession.accessToken),
-        fetchTeacherAssignments(currentSession.accessToken),
-      ]);
-      setTeacherSummary(summary);
-      setTeacherAssignments(assignments);
-      if (!assignmentDraft.skillId && summary[0]?.skill_id) {
-        setAssignmentDraft((c) => ({ ...c, skillId: summary[0].skill_id }));
+    const [summaryResult, assignmentsResult] = await Promise.allSettled([
+      fetchTeacherSummary(currentSession.accessToken),
+      fetchTeacherAssignments(currentSession.accessToken),
+    ]);
+
+    if (summaryResult.status === 'fulfilled') {
+      setTeacherSummary(summaryResult.value);
+      if (!assignmentDraft.skillId && summaryResult.value[0]?.skill_id) {
+        setAssignmentDraft((c) => ({ ...c, skillId: summaryResult.value[0].skill_id }));
       }
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'No se pudo cargar el panel docente');
+    } else {
+      setTeacherSummary([]);
+    }
+
+    if (assignmentsResult.status === 'fulfilled') {
+      setTeacherAssignments(assignmentsResult.value);
+    } else {
+      setTeacherAssignments([]);
+    }
+
+    if (summaryResult.status === 'rejected' || assignmentsResult.status === 'rejected') {
+      const parts: string[] = [];
+      if (summaryResult.status === 'rejected') {
+        parts.push(`resumen: ${summaryResult.reason instanceof Error ? summaryResult.reason.message : 'error desconocido'}`);
+      }
+      if (assignmentsResult.status === 'rejected') {
+        parts.push(`asignaciones: ${assignmentsResult.reason instanceof Error ? assignmentsResult.reason.message : 'error desconocido'}`);
+      }
+      setErrorMessage(`No se pudo cargar completamente el panel docente (${parts.join(' | ')})`);
     }
   }
 

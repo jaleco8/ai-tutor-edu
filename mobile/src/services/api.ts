@@ -42,7 +42,20 @@ async function request<T>(path: string, options: RequestOptions = {}) {
   });
 
   if (!response.ok) {
-    const message = await response.text();
+    const raw = await response.text();
+    let message = raw;
+
+    try {
+      const parsed = JSON.parse(raw) as { message?: string | string[] };
+      if (Array.isArray(parsed.message)) {
+        message = parsed.message.join(', ');
+      } else if (typeof parsed.message === 'string') {
+        message = parsed.message;
+      }
+    } catch {
+      // Keep raw server text when the response is not JSON.
+    }
+
     throw new Error(message || `Request failed with status ${response.status}`);
   }
 

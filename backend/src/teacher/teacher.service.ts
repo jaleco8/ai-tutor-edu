@@ -34,7 +34,7 @@ export class TeacherService {
     }
 
     if (!this.isMissingColumnError(error, 'section_skill_summary', 'teacher_id')) {
-      throw error;
+      this.throwSupabaseError(error, 'Failed to load section summary');
     }
 
     // Legacy fallback for older deployments where section_skill_summary has no teacher_id.
@@ -49,7 +49,9 @@ export class TeacherService {
     }
 
     const { data: legacyData, error: legacyError } = await legacyQuery;
-    if (legacyError) throw legacyError;
+    if (legacyError) {
+      this.throwSupabaseError(legacyError, 'Failed to load section summary');
+    }
 
     return legacyData;
   }
@@ -104,7 +106,9 @@ export class TeacherService {
       is_active: true,
     }).select().single();
 
-    if (error) throw error;
+    if (error) {
+      this.throwSupabaseError(error, 'Failed to create assignment');
+    }
     return data;
   }
 
@@ -123,7 +127,7 @@ export class TeacherService {
       if (this.isLegacyAssignmentsSchemaError(error)) {
         return this.getAssignmentsLegacy(accessToken, teacherId);
       }
-      throw error;
+      this.throwSupabaseError(error, 'Failed to load assignments');
     }
 
     const teacher = await this.getTeacherContext(teacherId);
@@ -176,7 +180,9 @@ export class TeacherService {
       .eq('is_active', true)
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      this.throwSupabaseError(error, 'Failed to load assignments');
+    }
 
     const assignmentIds = (data ?? []).map((assignment) => assignment.id);
     const { data: completions } = assignmentIds.length > 0
@@ -226,7 +232,9 @@ export class TeacherService {
       .eq('id', assignmentId)
       .eq('teacher_id', teacherId);
 
-    if (error) throw error;
+    if (error) {
+      this.throwSupabaseError(error, 'Failed to deactivate assignment');
+    }
     return { success: true };
   }
 
@@ -310,5 +318,9 @@ export class TeacherService {
     }
 
     return [];
+  }
+
+  private throwSupabaseError(error: SupabaseErrorLike, fallback: string): never {
+    throw new BadRequestException(error.message ?? fallback);
   }
 }
