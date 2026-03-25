@@ -363,12 +363,6 @@ export default function App() {
     try {
       await updateProfile(session.accessToken, onboarding);
 
-      for (const area of onboarding.selectedAreas.filter((v) => v !== 'programacion')) {
-        const manifest = await fetchBundleManifest(session.accessToken, area, onboarding.gradeLevel);
-        const bundle = await downloadBundle(manifest);
-        await saveBundle(bundle, manifest.version, manifest.hashSha256);
-      }
-
       const profile = {
         ...session.profile,
         schoolLevel: onboarding.schoolLevel,
@@ -376,6 +370,8 @@ export default function App() {
         selectedAreas: onboarding.selectedAreas,
         onboardingCompleted: true,
       };
+
+      await downloadSelectedBundles(session.accessToken, profile.gradeLevel, profile.selectedAreas);
 
       const nextSession = { ...session, profile };
       await saveSession(nextSession);
@@ -393,6 +389,42 @@ export default function App() {
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'No se pudo guardar el onboarding');
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function downloadSelectedBundles(accessToken: string, gradeLevel: string | null, selectedAreas: string[]) {
+    if (!gradeLevel) {
+      throw new Error('El perfil no tiene grado configurado todavía.');
+    }
+
+    if (selectedAreas.length === 0) {
+      throw new Error('Selecciona al menos un área para descargar material.');
+    }
+
+    for (const area of selectedAreas) {
+      const manifest = await fetchBundleManifest(accessToken, area, gradeLevel);
+      const bundle = await downloadBundle(manifest);
+      await saveBundle(bundle, manifest.version, manifest.hashSha256);
+    }
+  }
+
+  async function handleRetryContentDownload() {
+    if (!session) return;
+
+    setIsBusy(true);
+    setErrorMessage(null);
+
+    try {
+      await downloadSelectedBundles(
+        session.accessToken,
+        session.profile.gradeLevel,
+        session.profile.selectedAreas,
+      );
+      await hydrateLocalState(session.profile.selectedAreas);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'No se pudo descargar el material');
     } finally {
       setIsBusy(false);
     }
@@ -1010,7 +1042,17 @@ export default function App() {
           </View>
         ) : (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyText}>Sin contenido local. Conecta a internet para descargar tu material.</Text>
+            <Text style={styles.emptyText}>
+              {isConnected
+                ? 'No hay material descargado para tu perfil todavía. Descárgalo o revisa tus áreas y grado.'
+                : 'No hay material local disponible. Conéctate para descargarlo o revisa tu perfil.'}
+            </Text>
+            <View style={styles.emptyActions}>
+              {isConnected ? (
+                <Btn label="Descargar material" onPress={() => void handleRetryContentDownload()} />
+              ) : null}
+              <Btn label="Revisar perfil" variant="outline" onPress={() => setScreen('onboarding')} />
+            </View>
           </View>
         )}
 
@@ -1890,6 +1932,7 @@ const styles = StyleSheet.create({
     borderColor: '#fde68a',
   },
   emptyText: { color: '#92400e', fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  emptyActions: { width: '100%', marginTop: 14, gap: 10 },
   assignCard: {
     flexDirection: 'row',
     alignItems: 'center',

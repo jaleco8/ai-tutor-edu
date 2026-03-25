@@ -107,7 +107,7 @@ export class ContentService {
       area,
       gradeLevel,
       version,
-      hashSha256: latestVersion?.hash_sha256 ?? hashSha256,
+      hashSha256,
       signedUrl: `${baseUrl}/content/bundle/download?${query.toString()}`,
     };
   }
