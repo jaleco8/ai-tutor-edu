@@ -144,6 +144,32 @@ function areaIcon(value: string): string {
   return areaData.find((a) => a.value === value)?.icon ?? '📚';
 }
 
+function formatIsoDateForInput(isoDate: string): string {
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function dateInputToDeadlineIso(dateInput: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateInput)) return null;
+  const localEndOfDay = new Date(`${dateInput}T23:59:59`);
+  if (Number.isNaN(localEndOfDay.getTime())) return null;
+  return localEndOfDay.toISOString();
+}
+
+function formatReadableDate(isoDate: string): string {
+  const date = new Date(isoDate);
+  if (Number.isNaN(date.getTime())) return isoDate;
+  return new Intl.DateTimeFormat('es-VE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(date);
+}
+
 const statusConfig: Record<string, { label: string; color: string; bg: string }> = {
   bloqueada: { label: 'Bloqueada', color: '#9ca3af', bg: '#f3f4f6' },
   disponible: { label: 'Disponible', color: '#3b82f6', bg: '#eff6ff' },
@@ -181,7 +207,7 @@ export default function App() {
   const [teacherAssignments, setTeacherAssignments] = useState<AssignmentSummary[]>([]);
   const [assignmentDraft, setAssignmentDraft] = useState({
     skillId: '',
-    deadline: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+    deadlineDate: formatIsoDateForInput(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()),
   });
 
   // --- DEBUG: connection test ---
@@ -193,6 +219,14 @@ export default function App() {
   const activeSkill = useMemo(
     () => skills.find((s) => s.id === (selectedSkillId ?? recommendation?.skillId ?? null)) ?? null,
     [recommendation?.skillId, selectedSkillId, skills],
+  );
+  const teacherSkillOptions = useMemo(
+    () => Array.from(new Map(teacherSummary.map((row) => [row.skill_id, row])).values()),
+    [teacherSummary],
+  );
+  const selectedTeacherSkill = useMemo(
+    () => teacherSkillOptions.find((row) => row.skill_id === assignmentDraft.skillId) ?? null,
+    [assignmentDraft.skillId, teacherSkillOptions],
   );
 
   useEffect(() => {
@@ -540,14 +574,25 @@ export default function App() {
   }
 
   async function handleCreateAssignment() {
-    if (!session || !assignmentDraft.skillId) return;
+    if (!session) return;
+    if (!assignmentDraft.skillId) {
+      setErrorMessage('Selecciona una habilidad para crear la asignación.');
+      return;
+    }
+
+    const deadlineIso = dateInputToDeadlineIso(assignmentDraft.deadlineDate);
+    if (!deadlineIso) {
+      setErrorMessage('Fecha límite inválida. Usa formato AAAA-MM-DD.');
+      return;
+    }
+
     setIsBusy(true);
     setErrorMessage(null);
 
     try {
       await createAssignment(session.accessToken, {
         skillId: assignmentDraft.skillId,
-        deadline: assignmentDraft.deadline,
+        deadline: deadlineIso,
         targetScope: 'all',
       });
       await loadTeacherData(session);
@@ -1174,16 +1219,32 @@ export default function App() {
         {/* Create assignment */}
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>Nueva asignación</Text>
+          <Text style={styles.fieldLabel}>Habilidad</Text>
+          {teacherSkillOptions.length === 0 ? (
+            <Text style={styles.caption}>No hay habilidades de la sección para asignar todavía.</Text>
+          ) : (
+            <View style={styles.pillRow}>
+              {teacherSkillOptions.map((row) => (
+                <Pill
+                  key={row.skill_id}
+                  label={`${areaIcon(row.area)} ${row.skill_name}`}
+                  active={assignmentDraft.skillId === row.skill_id}
+                  onPress={() => setAssignmentDraft((c) => ({ ...c, skillId: row.skill_id }))}
+                />
+              ))}
+            </View>
+          )}
+          {selectedTeacherSkill && (
+            <Text style={styles.caption}>
+              Seleccionada: {selectedTeacherSkill.skill_name}
+            </Text>
+          )}
           <Field
-            label="ID de habilidad"
-            value={assignmentDraft.skillId}
-            onChangeText={(skillId) => setAssignmentDraft((c) => ({ ...c, skillId }))}
+            label="Fecha límite (AAAA-MM-DD)"
+            value={assignmentDraft.deadlineDate}
+            onChangeText={(deadlineDate) => setAssignmentDraft((c) => ({ ...c, deadlineDate }))}
           />
-          <Field
-            label="Fecha límite (ISO)"
-            value={assignmentDraft.deadline}
-            onChangeText={(deadline) => setAssignmentDraft((c) => ({ ...c, deadline }))}
-          />
+          <Text style={styles.caption}>Se guardará al final del día seleccionado.</Text>
           <Btn label="Asignar a toda la sección" onPress={() => void handleCreateAssignment()} />
         </View>
 
@@ -1200,6 +1261,7 @@ export default function App() {
                   <Text style={styles.assignMeta}>
                     {a.completionCount ?? 0}/{a.targetedCount ?? 0} completado ({a.completionRate ?? 0}%)
                   </Text>
+                  <Text style={styles.assignMeta}>Vence: {formatReadableDate(a.deadline)}</Text>
                 </View>
                 {/* Completion bar */}
                 <View style={[styles.skillProgressBg, { width: 60 }]}>

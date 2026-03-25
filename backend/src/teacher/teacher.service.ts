@@ -7,6 +7,11 @@ interface TeacherContext {
   sectionCode: string;
 }
 
+interface SupabaseErrorLike {
+  code?: string;
+  message?: string;
+}
+
 @Injectable()
 export class TeacherService {
   constructor(private readonly supabase: SupabaseService) {}
@@ -24,9 +29,29 @@ export class TeacherService {
     }
 
     const { data, error } = await query;
-    if (error) throw error;
+    if (!error) {
+      return data;
+    }
 
-    return data;
+    if (!this.isMissingColumnError(error, 'section_skill_summary', 'teacher_id')) {
+      throw error;
+    }
+
+    // Legacy fallback for older deployments where section_skill_summary has no teacher_id.
+    const schoolCode = await this.getTeacherSchoolCode(teacherId);
+    let legacyQuery = client
+      .from('section_skill_summary')
+      .select('*')
+      .eq('school_code', schoolCode);
+
+    if (area) {
+      legacyQuery = legacyQuery.eq('area', area);
+    }
+
+    const { data: legacyData, error: legacyError } = await legacyQuery;
+    if (legacyError) throw legacyError;
+
+    return legacyData;
   }
 
   async createAssignment(teacherId: string, dto: {
@@ -86,7 +111,6 @@ export class TeacherService {
   async getAssignments(accessToken: string, teacherId: string) {
     const client = this.supabase.getClientForUser(accessToken);
     const serviceClient = this.supabase.getClient();
-    const teacher = await this.getTeacherContext(teacherId);
 
     const { data, error } = await client
       .from('assignments')
@@ -95,7 +119,14 @@ export class TeacherService {
       .eq('is_active', true)
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      if (this.isLegacyAssignmentsSchemaError(error)) {
+        return this.getAssignmentsLegacy(accessToken, teacherId);
+      }
+      throw error;
+    }
+
+    const teacher = await this.getTeacherContext(teacherId);
 
     const assignmentIds = (data ?? []).map((assignment) => assignment.id);
     const { data: completions } = assignmentIds.length > 0
@@ -125,6 +156,58 @@ export class TeacherService {
 
       return {
         ...assignment,
+        completionCount,
+        targetedCount,
+        completionRate: targetedCount > 0
+          ? Number(((completionCount / targetedCount) * 100).toFixed(1))
+          : 0,
+      };
+    });
+  }
+
+  private async getAssignmentsLegacy(accessToken: string, teacherId: string) {
+    const client = this.supabase.getClientForUser(accessToken);
+    const serviceClient = this.supabase.getClient();
+
+    const { data, error } = await client
+      .from('assignments')
+      .select('id, skill_id, deadline, target, is_active, created_at, skills(name, area)')
+      .eq('teacher_id', teacherId)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    const assignmentIds = (data ?? []).map((assignment) => assignment.id);
+    const { data: completions } = assignmentIds.length > 0
+      ? await serviceClient
+        .from('assignment_completions')
+        .select('assignment_id')
+        .in('assignment_id', assignmentIds)
+      : { data: [] as Array<{ assignment_id: string }> };
+
+    const completionCountByAssignment = (completions ?? []).reduce<Map<string, number>>((acc, completion) => {
+      acc.set(completion.assignment_id, (acc.get(completion.assignment_id) ?? 0) + 1);
+      return acc;
+    }, new Map<string, number>());
+
+    const schoolCode = await this.getTeacherSchoolCode(teacherId);
+    const { count: schoolStudentCount } = await serviceClient
+      .from('profiles')
+      .select('*', { count: 'exact', head: true })
+      .eq('school_code', schoolCode)
+      .eq('role', 'estudiante');
+
+    return (data ?? []).map((assignment) => {
+      const targetStudents = this.parseLegacyTargetStudents(assignment.target);
+      const targetScope = targetStudents.length > 0 ? 'selected' : 'all';
+      const targetedCount = targetScope === 'all' ? (schoolStudentCount ?? 0) : targetStudents.length;
+      const completionCount = completionCountByAssignment.get(assignment.id) ?? 0;
+
+      return {
+        ...assignment,
+        target_scope: targetScope,
+        target_students: targetStudents,
         completionCount,
         targetedCount,
         completionRate: targetedCount > 0
@@ -174,5 +257,58 @@ export class TeacherService {
       sectionId: data.section_id,
       sectionCode: section.section_code,
     };
+  }
+
+  private async getTeacherSchoolCode(teacherId: string): Promise<string> {
+    const client = this.supabase.getClient();
+    const { data, error } = await client
+      .from('profiles')
+      .select('school_code')
+      .eq('id', teacherId)
+      .single<{ school_code: string }>();
+
+    if (error || !data?.school_code) {
+      throw new BadRequestException('Teacher school not configured');
+    }
+
+    return data.school_code;
+  }
+
+  private isMissingColumnError(error: SupabaseErrorLike, table: string, column: string): boolean {
+    const code = (error.code ?? '').toUpperCase();
+    const message = (error.message ?? '').toLowerCase();
+    const missingColumnCode = code === '42703' || code === 'PGRST204' || code === 'PGRST205';
+
+    if (!missingColumnCode) {
+      return false;
+    }
+
+    return message.includes(table.toLowerCase()) && message.includes(column.toLowerCase());
+  }
+
+  private isLegacyAssignmentsSchemaError(error: SupabaseErrorLike): boolean {
+    return this.isMissingColumnError(error, 'assignments', 'target_scope')
+      || this.isMissingColumnError(error, 'assignments', 'target_students');
+  }
+
+  private parseLegacyTargetStudents(target: unknown): string[] {
+    if (typeof target !== 'string') {
+      return [];
+    }
+
+    if (target === 'all') {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(target);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((value): value is string => typeof value === 'string');
+      }
+    } catch {
+      return [];
+    }
+
+    return [];
   }
 }
