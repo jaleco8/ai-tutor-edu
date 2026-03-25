@@ -191,6 +191,7 @@ export default function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showAuthPassword, setShowAuthPassword] = useState(false);
   const [skills, setSkills] = useState<LocalSkill[]>([]);
   const [mastery, setMastery] = useState<LocalMastery[]>([]);
   const [diagnosticExercises, setDiagnosticExercises] = useState<LocalExercise[]>([]);
@@ -237,6 +238,12 @@ export default function App() {
     void bootstrap();
     return () => subscription();
   }, []);
+
+  useEffect(() => {
+    if (screen === 'auth') {
+      setErrorMessage(null);
+    }
+  }, [screen]);
 
   useEffect(() => {
     if (!session) return;
@@ -327,6 +334,7 @@ export default function App() {
       await saveSession(mergedSession);
       setSession(mergedSession);
       setAuthForm(initialAuthForm);
+      setShowAuthPassword(false);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'No se pudo autenticar');
     } finally {
@@ -337,6 +345,8 @@ export default function App() {
   async function handleLogout() {
     await clearSession();
     setSession(null);
+    setErrorMessage(null);
+    setShowAuthPassword(false);
     setSkills([]);
     setMastery([]);
     setTeacherSummary([]);
@@ -715,6 +725,11 @@ export default function App() {
 
   function renderAuth() {
     const isLogin = authForm.mode === 'login';
+    const patchAuthForm = (patch: Partial<AuthFormState>) => {
+      setErrorMessage(null);
+      setAuthForm((current) => ({ ...current, ...patch }));
+    };
+
     return (
       <View style={styles.card}>
         {/* App logo area */}
@@ -728,13 +743,13 @@ export default function App() {
         <View style={styles.tabRow}>
           <Pressable
             style={[styles.tab, isLogin && styles.tabActive]}
-            onPress={() => setAuthForm((c) => ({ ...c, mode: 'login' }))}
+            onPress={() => patchAuthForm({ mode: 'login' })}
           >
             <Text style={[styles.tabText, isLogin && styles.tabTextActive]}>Ingresar</Text>
           </Pressable>
           <Pressable
             style={[styles.tab, !isLogin && styles.tabActive]}
-            onPress={() => setAuthForm((c) => ({ ...c, mode: 'register' }))}
+            onPress={() => patchAuthForm({ mode: 'register' })}
           >
             <Text style={[styles.tabText, !isLogin && styles.tabTextActive]}>Registrarse</Text>
           </Pressable>
@@ -745,12 +760,12 @@ export default function App() {
             <SegmentBtn
               label="Estudiante"
               active={authForm.role === 'estudiante'}
-              onPress={() => setAuthForm((c) => ({ ...c, role: 'estudiante' }))}
+              onPress={() => patchAuthForm({ role: 'estudiante' })}
             />
             <SegmentBtn
               label="Docente"
               active={authForm.role === 'docente'}
-              onPress={() => setAuthForm((c) => ({ ...c, role: 'docente' }))}
+              onPress={() => patchAuthForm({ role: 'docente' })}
             />
           </View>
         )}
@@ -758,14 +773,22 @@ export default function App() {
         <Field
           label="Correo electrónico"
           value={authForm.email}
-          onChangeText={(email) => setAuthForm((c) => ({ ...c, email }))}
+          onChangeText={(email) => patchAuthForm({ email })}
           autoComplete="email"
         />
         <Field
           label="Contraseña"
-          secureTextEntry
+          secureTextEntry={!showAuthPassword}
           value={authForm.password}
-          onChangeText={(password) => setAuthForm((c) => ({ ...c, password }))}
+          onChangeText={(password) => patchAuthForm({ password })}
+          rightAccessory={(
+            <Pressable
+              style={styles.inputAccessoryBtn}
+              onPress={() => setShowAuthPassword((current) => !current)}
+            >
+              <Text style={styles.inputAccessoryText}>{showAuthPassword ? '🙈' : '👁'}</Text>
+            </Pressable>
+          )}
         />
 
         {!isLogin && (
@@ -773,17 +796,17 @@ export default function App() {
             <Field
               label="Nombre completo (opcional para estudiantes)"
               value={authForm.fullName}
-              onChangeText={(fullName) => setAuthForm((c) => ({ ...c, fullName }))}
+              onChangeText={(fullName) => patchAuthForm({ fullName })}
             />
             <Field
               label="Código de escuela"
               value={authForm.schoolCode}
-              onChangeText={(schoolCode) => setAuthForm((c) => ({ ...c, schoolCode }))}
+              onChangeText={(schoolCode) => patchAuthForm({ schoolCode })}
             />
             <Field
               label="Código de sección"
               value={authForm.sectionCode}
-              onChangeText={(sectionCode) => setAuthForm((c) => ({ ...c, sectionCode }))}
+              onChangeText={(sectionCode) => patchAuthForm({ sectionCode })}
             />
           </>
         )}
@@ -1344,19 +1367,34 @@ function Field(props: {
   value: string;
   secureTextEntry?: boolean;
   autoComplete?: string;
+  rightAccessory?: React.ReactNode;
   onChangeText: (v: string) => void;
 }) {
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{props.label}</Text>
-      <TextInput
-        style={styles.input}
-        value={props.value}
-        secureTextEntry={props.secureTextEntry}
-        onChangeText={props.onChangeText}
-        autoCapitalize="none"
-        placeholderTextColor="#9ca3af"
-      />
+      {props.rightAccessory ? (
+        <View style={styles.inputWithAccessory}>
+          <TextInput
+            style={styles.inputWithAccessoryText}
+            value={props.value}
+            secureTextEntry={props.secureTextEntry}
+            onChangeText={props.onChangeText}
+            autoCapitalize="none"
+            placeholderTextColor="#9ca3af"
+          />
+          {props.rightAccessory}
+        </View>
+      ) : (
+        <TextInput
+          style={styles.input}
+          value={props.value}
+          secureTextEntry={props.secureTextEntry}
+          onChangeText={props.onChangeText}
+          autoCapitalize="none"
+          placeholderTextColor="#9ca3af"
+        />
+      )}
     </View>
   );
 }
@@ -1612,6 +1650,31 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     fontSize: 15,
     color: C.text,
+  },
+  inputWithAccessory: {
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingLeft: 14,
+    paddingRight: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  inputWithAccessoryText: {
+    flex: 1,
+    paddingVertical: 11,
+    fontSize: 15,
+    color: C.text,
+  },
+  inputAccessoryBtn: {
+    marginLeft: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+  },
+  inputAccessoryText: {
+    fontSize: 18,
   },
 
   // ── Buttons ──

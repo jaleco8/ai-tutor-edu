@@ -16,8 +16,8 @@ interface SupabaseErrorLike {
 export class TeacherService {
   constructor(private readonly supabase: SupabaseService) {}
 
-  async getSectionSummary(accessToken: string, teacherId: string, area?: string) {
-    const client = this.supabase.getClientForUser(accessToken);
+  async getSectionSummary(_accessToken: string, teacherId: string, area?: string) {
+    const client = this.supabase.getClient();
 
     let query = client
       .from('section_skill_summary')
